@@ -253,6 +253,20 @@ input { font-family: inherit; color: var(--text-primary); }
 }
 .password-toggle:hover { color: var(--text-secondary); }
 
+/* ── Forgot Password Link ── */
+.forgot-link {
+  display: block;
+  width: 100%;
+  text-align: center;
+  margin-top: 14px;
+  font-size: 13px;
+  color: var(--accent);
+  font-weight: 500;
+}
+.forgot-link:hover { text-decoration: underline; }
+.reset-title { font-size: 18px; font-weight: 700; margin-bottom: 8px; }
+.reset-desc { font-size: 13px; color: var(--text-secondary); margin-bottom: 16px; line-height: 1.5; }
+
 /* ── Email Confirmation ── */
 .confirmation-card {
   text-align: center;
@@ -291,16 +305,33 @@ input { font-family: inherit; color: var(--text-primary); }
 }
 .lang-chip:hover:not(.active) { background: var(--bg-input); }
 
+/* ── Phone Typeable Input ── */
+.phone-type-area { width: 100%; margin-bottom: 12px; }
+.phone-typeable-input {
+  width: 100%;
+  padding: 10px 14px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 15px;
+  color: var(--text-primary);
+  outline: none;
+  transition: border-color 0.2s;
+}
+.phone-typeable-input:focus { border-color: var(--accent); }
+.phone-typeable-input::placeholder { color: var(--text-muted); }
+
 .number-display {
   display: flex; align-items: center; gap: 8px; width: 100%;
   padding: 12px 16px; background: var(--bg-card); border-radius: var(--radius);
   margin-bottom: 20px; border: 1px solid var(--border);
 }
 .number-input {
-  flex: 1; background: transparent; border: none; font-size: 24px;
-  font-weight: 600; text-align: center; outline: none; color: var(--text-primary); letter-spacing: 2px;
+  flex: 1; font-size: 24px;
+  font-weight: 600; text-align: center; color: var(--text-primary); letter-spacing: 2px;
+  overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
 }
-.number-input::placeholder { color: var(--text-muted); font-weight: 400; letter-spacing: 0; font-size: 16px; }
+.number-placeholder { color: var(--text-muted); font-weight: 400; letter-spacing: 0; font-size: 16px; }
 .delete-btn { padding: 6px; color: var(--text-secondary); }
 .delete-btn:hover { color: var(--danger); }
 .dialpad { display: flex; flex-direction: column; gap: 10px; width: 100%; max-width: 300px; margin-bottom: 24px; }

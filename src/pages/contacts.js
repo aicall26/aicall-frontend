@@ -4,12 +4,14 @@ import { navigateAndCall } from '../lib/router.js';
 let contacts = [];
 let search = '';
 let showForm = false;
+let loaded = false;
 
 async function loadContacts() {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return;
   const { data } = await supabase.from('contacts').select('*').eq('user_id', user.id).order('name');
   contacts = data || [];
+  loaded = true;
 }
 
 function groupByLetter(list) {
@@ -22,14 +24,16 @@ function groupByLetter(list) {
   return Object.entries(groups).sort(([a], [b]) => a.localeCompare(b));
 }
 
+function supportsContactPicker() {
+  return 'contacts' in navigator && 'ContactsManager' in window;
+}
+
 export function renderContacts() {
   const filtered = contacts.filter(c =>
     c.name.toLowerCase().includes(search.toLowerCase()) ||
     c.phone_number.includes(search)
   );
   const groups = groupByLetter(filtered);
-
-  const supportsContactPicker = 'contacts' in navigator && 'ContactsManager' in window;
 
   return `
   <div class="contacts-page">
@@ -44,7 +48,7 @@ export function renderContacts() {
       </button>
     </div>
 
-    ${supportsContactPicker ? `
+    ${supportsContactPicker() ? `
     <button class="btn-import-contacts" id="importContactsBtn">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg>
       Importă din telefon
@@ -63,8 +67,8 @@ export function renderContacts() {
     ${groups.length === 0 ? `
     <div class="empty-state">
       <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" stroke-width="1.5"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
-      <p>Nu ai contacte</p>
-      <p class="empty-hint">Apasă „Adaugă" pentru a adăuga un contact</p>
+      <p>${loaded ? 'Nu ai contacte' : 'Se încarcă...'}</p>
+      ${loaded ? '<p class="empty-hint">Apasă „Adaugă" pentru a adăuga un contact</p>' : ''}
     </div>` : groups.map(([letter, items]) => `
     <div class="contact-group">
       <div class="group-letter">${letter}</div>
@@ -87,11 +91,13 @@ export function renderContacts() {
 }
 
 export async function mountContacts() {
-  if (contacts.length === 0 && !showForm) await loadContacts();
-  const content = document.getElementById('content');
-  if (contacts.length > 0 && !document.querySelector('.contact-row')) {
+  if (!loaded) {
+    await loadContacts();
+    const content = document.getElementById('content');
     content.innerHTML = renderContacts();
   }
+
+  const content = document.getElementById('content');
 
   document.getElementById('contactSearch')?.addEventListener('input', (e) => {
     search = e.target.value;

@@ -1,7 +1,9 @@
 import { supabase } from '../lib/supabase.js';
 
-export function renderLogin(confirmationSent = false) {
-  if (confirmationSent) {
+let view = 'login'; // 'login' | 'confirmation' | 'resetPassword' | 'resetSent'
+
+export function renderLogin() {
+  if (view === 'confirmation') {
     return `
     <div class="login-page">
       <div class="login-logo">
@@ -19,6 +21,57 @@ export function renderLogin(confirmationSent = false) {
         </svg>
         <h2>Verifică-ți email-ul</h2>
         <p>Am trimis un link de confirmare pe adresa ta de email. Accesează link-ul pentru a-ți activa contul.</p>
+        <button class="btn-primary" id="backToLogin" style="margin-top:20px">Înapoi la autentificare</button>
+      </div>
+    </div>`;
+  }
+
+  if (view === 'resetPassword') {
+    return `
+    <div class="login-page">
+      <div class="login-logo">
+        <div class="login-logo-icon">
+          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="url(#grad)" stroke-width="2">
+            <defs><linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#6C63FF"/><stop offset="100%" stop-color="#3B82F6"/></linearGradient></defs>
+            <path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6A19.79 19.79 0 012.12 4.18 2 2 0 014.11 2h3a2 2 0 012 1.72c.127.96.362 1.903.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.338 1.85.573 2.81.7A2 2 0 0122 16.92z"/>
+          </svg>
+        </div>
+        <h1 class="login-title">Ai<span class="accent">Call</span></h1>
+      </div>
+      <div class="login-card">
+        <h3 class="reset-title">Resetează parola</h3>
+        <p class="reset-desc">Introdu adresa de email și îți vom trimite un link de resetare.</p>
+        <div id="resetError" class="login-error" style="display:none"></div>
+        <form id="resetForm" class="login-form">
+          <div class="form-group">
+            <label>Email</label>
+            <input type="email" id="resetEmail" placeholder="email@exemplu.ro" autocomplete="email" required />
+          </div>
+          <button type="submit" class="btn-primary" id="resetBtn">Trimite link de resetare</button>
+        </form>
+        <button class="forgot-link" id="backToLoginFromReset" style="margin-top:16px">Înapoi la autentificare</button>
+      </div>
+    </div>`;
+  }
+
+  if (view === 'resetSent') {
+    return `
+    <div class="login-page">
+      <div class="login-logo">
+        <div class="login-logo-icon">
+          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="url(#grad)" stroke-width="2">
+            <defs><linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#6C63FF"/><stop offset="100%" stop-color="#3B82F6"/></linearGradient></defs>
+            <path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6A19.79 19.79 0 012.12 4.18 2 2 0 014.11 2h3a2 2 0 012 1.72c.127.96.362 1.903.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.338 1.85.573 2.81.7A2 2 0 0122 16.92z"/>
+          </svg>
+        </div>
+        <h1 class="login-title">Ai<span class="accent">Call</span></h1>
+      </div>
+      <div class="confirmation-card">
+        <svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="var(--success)" stroke-width="2">
+          <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22 6 12 13 2 6"/>
+        </svg>
+        <h2>Email de resetare trimis!</h2>
+        <p>Verifică-ți inbox-ul pentru link-ul de resetare a parolei. Dacă nu găsești email-ul, verifică și folderul de spam.</p>
         <button class="btn-primary" id="backToLogin" style="margin-top:20px">Înapoi la autentificare</button>
       </div>
     </div>`;
@@ -66,19 +119,64 @@ export function renderLogin(confirmationSent = false) {
         </div>
         <button type="submit" class="btn-primary" id="submitBtn">Autentificare</button>
       </form>
+      <button class="forgot-link" id="forgotPassword">Ai uitat parola?</button>
     </div>
   </div>`;
 }
 
-export function mountLogin(confirmationSent = false) {
-  if (confirmationSent) {
-    document.getElementById('backToLogin')?.addEventListener('click', () => {
-      const app = document.getElementById('app');
-      app.innerHTML = renderLogin(false);
-      mountLogin(false);
-    });
-    return;
-  }
+function rerender() {
+  const app = document.getElementById('app');
+  app.innerHTML = renderLogin();
+  mountLogin();
+}
+
+export function mountLogin() {
+  // Back to login from any sub-view
+  document.getElementById('backToLogin')?.addEventListener('click', () => {
+    view = 'login';
+    rerender();
+  });
+  document.getElementById('backToLoginFromReset')?.addEventListener('click', () => {
+    view = 'login';
+    rerender();
+  });
+
+  // Forgot password link
+  document.getElementById('forgotPassword')?.addEventListener('click', () => {
+    view = 'resetPassword';
+    rerender();
+  });
+
+  // Reset password form
+  document.getElementById('resetForm')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const email = document.getElementById('resetEmail').value.trim();
+    const errorEl = document.getElementById('resetError');
+    const btn = document.getElementById('resetBtn');
+
+    btn.disabled = true;
+    btn.textContent = 'Se trimite...';
+    errorEl.style.display = 'none';
+
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(email);
+      if (error) throw error;
+      view = 'resetSent';
+      rerender();
+    } catch (err) {
+      let msg = err.message || 'A apărut o eroare';
+      if (msg.includes('rate limit') || msg.includes('too many requests')) {
+        msg = 'Prea multe încercări. Așteaptă câteva minute.';
+      }
+      errorEl.textContent = msg;
+      errorEl.style.display = 'block';
+      btn.disabled = false;
+      btn.textContent = 'Trimite link de resetare';
+    }
+  });
+
+  // Login/register form only exists in 'login' view
+  if (view !== 'login') return;
 
   let mode = 'login';
 
@@ -90,6 +188,9 @@ export function mountLogin(confirmationSent = false) {
       document.getElementById('submitBtn').textContent = mode === 'login' ? 'Autentificare' : 'Înregistrare';
       document.getElementById('password').autocomplete = mode === 'login' ? 'current-password' : 'new-password';
       document.getElementById('loginError').style.display = 'none';
+      // Show/hide forgot password link
+      const forgotEl = document.getElementById('forgotPassword');
+      if (forgotEl) forgotEl.style.display = mode === 'login' ? 'block' : 'none';
     });
   });
 
@@ -126,10 +227,8 @@ export function mountLogin(confirmationSent = false) {
           options: { data: { full_name: fullName } },
         });
         if (error) throw error;
-        // Show confirmation page
-        const app = document.getElementById('app');
-        app.innerHTML = renderLogin(true);
-        mountLogin(true);
+        view = 'confirmation';
+        rerender();
         return;
       } else {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
@@ -137,7 +236,6 @@ export function mountLogin(confirmationSent = false) {
       }
     } catch (err) {
       let msg = err.message || 'A apărut o eroare';
-      // Translate common Supabase errors to Romanian
       if (msg.includes('User already registered') || msg.includes('already been registered')) {
         msg = 'Această adresă de email este deja înregistrată. Încearcă să te autentifici.';
       } else if (msg.includes('Invalid login credentials')) {

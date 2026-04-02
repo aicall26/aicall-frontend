@@ -5,6 +5,7 @@ let callState = { status: 'idle', number: '', duration: 0, timer: null, muted: f
 let targetLang = localStorage.getItem('aicall-target-lang') || 'EN';
 let ringtoneCtx = null;
 let ringtoneOsc = null;
+let ringtoneTimeout = null;
 
 const LANGUAGES = [
   { code: 'RO', label: 'Română' },
@@ -27,6 +28,10 @@ function formatDuration(s) {
   return `${m}:${sec}`;
 }
 
+function sanitizePhone(val) {
+  return val.replace(/[^0-9+*#]/g, '');
+}
+
 function renderDialpad() {
   return `
   <div class="call-page">
@@ -39,8 +44,12 @@ function renderDialpad() {
       </div>
     </div>
 
+    <div class="phone-type-area">
+      <input type="tel" id="phoneTypeable" class="phone-typeable-input" value="${callState.number}" placeholder="Scrie sau lipește numărul..." />
+    </div>
+
     <div class="number-display">
-      <input type="tel" id="phoneInput" class="number-input" value="${callState.number}" placeholder="Introdu numărul" readonly />
+      <div class="number-input" id="phoneDisplay">${callState.number || '<span class="number-placeholder">Introdu numărul</span>'}</div>
       ${callState.number ? `<button class="delete-btn" id="deleteBtn">
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 4H8l-7 8 7 8h13a2 2 0 002-2V6a2 2 0 00-2-2z"/><line x1="18" y1="9" x2="12" y2="15"/><line x1="12" y1="9" x2="18" y2="15"/></svg>
       </button>` : ''}
@@ -124,6 +133,15 @@ export function renderCall() {
   return renderActiveCall();
 }
 
+function updateDialpadUI() {
+  const display = document.getElementById('phoneDisplay');
+  if (display) {
+    display.innerHTML = callState.number || '<span class="number-placeholder">Introdu numărul</span>';
+  }
+  const callBtn = document.getElementById('callBtn');
+  if (callBtn) callBtn.disabled = !callState.number;
+}
+
 export function mountCall() {
   if (callState.status === 'idle') {
     // Language selector
@@ -135,12 +153,52 @@ export function mountCall() {
       });
     });
 
+    // Typeable/pasteable phone input
+    const typeableInput = document.getElementById('phoneTypeable');
+    if (typeableInput) {
+      typeableInput.addEventListener('input', () => {
+        callState.number = sanitizePhone(typeableInput.value);
+        typeableInput.value = callState.number;
+        updateDialpadUI();
+        // Show delete button if number just appeared
+        if (callState.number.length === 1 || callState.number.length === 0) {
+          const content = document.getElementById('content');
+          content.innerHTML = renderDialpad();
+          mountCall();
+          // Re-focus the input and place cursor at end
+          const newInput = document.getElementById('phoneTypeable');
+          if (newInput) {
+            newInput.focus();
+            newInput.setSelectionRange(newInput.value.length, newInput.value.length);
+          }
+        }
+      });
+
+      typeableInput.addEventListener('paste', (e) => {
+        e.preventDefault();
+        const pasted = (e.clipboardData || window.clipboardData).getData('text');
+        callState.number = sanitizePhone(pasted);
+        typeableInput.value = callState.number;
+        updateDialpadUI();
+        // Re-render to show delete button
+        const content = document.getElementById('content');
+        content.innerHTML = renderDialpad();
+        mountCall();
+        const newInput = document.getElementById('phoneTypeable');
+        if (newInput) {
+          newInput.focus();
+          newInput.setSelectionRange(newInput.value.length, newInput.value.length);
+        }
+      });
+    }
+
+    // Dialpad keys
     document.querySelectorAll('.dialpad-key').forEach(key => {
       key.addEventListener('click', () => {
         callState.number += key.dataset.key;
-        document.getElementById('phoneInput').value = callState.number;
-        const callBtn = document.getElementById('callBtn');
-        if (callBtn) callBtn.disabled = !callState.number;
+        const typeInput = document.getElementById('phoneTypeable');
+        if (typeInput) typeInput.value = callState.number;
+        updateDialpadUI();
         if (callState.number.length === 1) {
           const content = document.getElementById('content');
           content.innerHTML = renderDialpad();
@@ -151,9 +209,9 @@ export function mountCall() {
 
     document.getElementById('deleteBtn')?.addEventListener('click', () => {
       callState.number = callState.number.slice(0, -1);
-      document.getElementById('phoneInput').value = callState.number;
-      const callBtn = document.getElementById('callBtn');
-      if (callBtn) callBtn.disabled = !callState.number;
+      const typeInput = document.getElementById('phoneTypeable');
+      if (typeInput) typeInput.value = callState.number;
+      updateDialpadUI();
       if (!callState.number) {
         const content = document.getElementById('content');
         content.innerHTML = renderDialpad();
@@ -199,23 +257,21 @@ function startRingtone() {
       ringtoneOsc.connect(gain);
       gain.connect(ringtoneCtx.destination);
       ringtoneOsc.start();
-      // Ring pattern: 1s on, 2s off
       gain.gain.setValueAtTime(0.15, ringtoneCtx.currentTime);
       gain.gain.setValueAtTime(0, ringtoneCtx.currentTime + 1);
       ringtoneOsc.stop(ringtoneCtx.currentTime + 1);
       ringtoneOsc.onended = () => {
-        setTimeout(playTone, 2000);
+        ringtoneTimeout = setTimeout(playTone, 2000);
       };
     }
     playTone();
-  } catch (e) {
-    // Audio not supported
-  }
+  } catch (e) {}
 }
 
 function stopRingtone() {
   try {
-    if (ringtoneOsc) { ringtoneOsc.stop(); ringtoneOsc = null; }
+    if (ringtoneTimeout) { clearTimeout(ringtoneTimeout); ringtoneTimeout = null; }
+    if (ringtoneOsc) { try { ringtoneOsc.stop(); } catch (e) {} ringtoneOsc = null; }
     if (ringtoneCtx) { ringtoneCtx.close(); ringtoneCtx = null; }
   } catch (e) {}
 }
@@ -228,24 +284,18 @@ async function startCall() {
 
   startRingtone();
 
-  // Try real API call, fallback to simulation
-  let connected = false;
   if (import.meta.env.VITE_API_URL) {
     try {
       await api.post('/api/calls/start', {
         to: callState.number,
         target_language: targetLang,
       });
-      connected = true;
-    } catch (e) {
-      // API not available, simulate
-    }
+    } catch (e) {}
   }
 
-  // Simulate connection after 3 seconds (or real connection callback)
   setTimeout(() => {
+    if (callState.status !== 'connecting') return;
     stopRingtone();
-    // Countdown 3 seconds after "connection"
     callState.status = 'countdown';
     callState.countdown = 3;
     content.innerHTML = renderActiveCall();
@@ -275,7 +325,6 @@ async function endCall() {
   stopRingtone();
   if (callState.timer) clearInterval(callState.timer);
 
-  // Save to history
   try {
     const { data: { user } } = await supabase.auth.getUser();
     if (user && callState.duration > 0) {
