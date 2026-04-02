@@ -1,4 +1,18 @@
-let callState = { status: 'idle', number: '', duration: 0, timer: null, muted: false, speaker: false };
+import { supabase } from '../lib/supabase.js';
+import { api } from '../lib/api.js';
+
+let callState = { status: 'idle', number: '', duration: 0, timer: null, muted: false, speaker: false, countdown: 3 };
+let targetLang = localStorage.getItem('aicall-target-lang') || 'EN';
+let ringtoneCtx = null;
+let ringtoneOsc = null;
+
+const LANGUAGES = [
+  { code: 'RO', label: 'Română' },
+  { code: 'EN', label: 'English' },
+  { code: 'DE', label: 'Deutsch' },
+  { code: 'FR', label: 'Français' },
+  { code: 'ES', label: 'Español' },
+];
 
 const dialpadKeys = [
   ['1', '', '2', 'ABC', '3', 'DEF'],
@@ -16,6 +30,15 @@ function formatDuration(s) {
 function renderDialpad() {
   return `
   <div class="call-page">
+    <div class="lang-selector">
+      <label class="lang-label">Limba de traducere:</label>
+      <div class="lang-options">
+        ${LANGUAGES.map(l => `
+          <button class="lang-chip ${l.code === targetLang ? 'active' : ''}" data-lang="${l.code}">${l.code}</button>
+        `).join('')}
+      </div>
+    </div>
+
     <div class="number-display">
       <input type="tel" id="phoneInput" class="number-input" value="${callState.number}" placeholder="Introdu numărul" readonly />
       ${callState.number ? `<button class="delete-btn" id="deleteBtn">
@@ -55,14 +78,17 @@ function renderActiveCall() {
     <div class="call-number">${callState.number || 'Număr necunoscut'}</div>
 
     <div class="call-status">
-      ${callState.status === 'connecting' ? 'Se conectează...' : ''}
+      ${callState.status === 'connecting' ? 'Se apelează...' : ''}
+      ${callState.status === 'countdown' ? `<span class="countdown-num">${callState.countdown}</span>` : ''}
       ${callState.status === 'active' ? formatDuration(callState.duration) : ''}
     </div>
+
+    ${callState.status === 'countdown' ? `<div class="countdown-label">Conectat! Se pornește traducerea...</div>` : ''}
 
     ${callState.status === 'active' ? `
     <div class="translation-badge">
       <span class="badge-dot"></span>
-      Traducere activă automat
+      Traducere activă: ${LANGUAGES.find(l => l.code === targetLang)?.label || targetLang}
     </div>` : ''}
 
     <div class="call-controls">
@@ -72,7 +98,7 @@ function renderActiveCall() {
             ? '<line x1="1" y1="1" x2="23" y2="23"/><path d="M9 9v3a3 3 0 005.12 2.12M15 9.34V4a3 3 0 00-5.94-.6"/><path d="M17 16.95A7 7 0 015 12v-2m14 0v2c0 .74-.12 1.46-.34 2.13"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/>'
             : '<path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/>'}
         </svg>
-        <span>${callState.muted ? 'Muted' : 'Mute'}</span>
+        <span>${callState.muted ? 'Silențios' : 'Microfon'}</span>
       </button>
       <button class="control-btn ${callState.speaker ? 'active' : ''}" id="speakerBtn">
         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -80,7 +106,7 @@ function renderActiveCall() {
           <path d="M15.54 8.46a5 5 0 010 7.07"/>
           ${callState.speaker ? '<path d="M19.07 4.93a10 10 0 010 14.14"/>' : ''}
         </svg>
-        <span>Speaker</span>
+        <span>Difuzor</span>
       </button>
     </div>
 
@@ -100,15 +126,22 @@ export function renderCall() {
 
 export function mountCall() {
   if (callState.status === 'idle') {
+    // Language selector
+    document.querySelectorAll('.lang-chip').forEach(chip => {
+      chip.addEventListener('click', () => {
+        targetLang = chip.dataset.lang;
+        localStorage.setItem('aicall-target-lang', targetLang);
+        document.querySelectorAll('.lang-chip').forEach(c => c.classList.toggle('active', c.dataset.lang === targetLang));
+      });
+    });
+
     document.querySelectorAll('.dialpad-key').forEach(key => {
       key.addEventListener('click', () => {
         callState.number += key.dataset.key;
         document.getElementById('phoneInput').value = callState.number;
         const callBtn = document.getElementById('callBtn');
         if (callBtn) callBtn.disabled = !callState.number;
-        // Re-render to show delete button
-        const display = document.querySelector('.number-display');
-        if (display && callState.number.length === 1) {
+        if (callState.number.length === 1) {
           const content = document.getElementById('content');
           content.innerHTML = renderDialpad();
           mountCall();
@@ -153,35 +186,119 @@ export function mountCall() {
   }
 }
 
-function startCall() {
+function startRingtone() {
+  try {
+    ringtoneCtx = new AudioContext();
+    function playTone() {
+      if (!ringtoneCtx || ringtoneCtx.state === 'closed') return;
+      ringtoneOsc = ringtoneCtx.createOscillator();
+      const gain = ringtoneCtx.createGain();
+      ringtoneOsc.type = 'sine';
+      ringtoneOsc.frequency.value = 440;
+      gain.gain.value = 0.15;
+      ringtoneOsc.connect(gain);
+      gain.connect(ringtoneCtx.destination);
+      ringtoneOsc.start();
+      // Ring pattern: 1s on, 2s off
+      gain.gain.setValueAtTime(0.15, ringtoneCtx.currentTime);
+      gain.gain.setValueAtTime(0, ringtoneCtx.currentTime + 1);
+      ringtoneOsc.stop(ringtoneCtx.currentTime + 1);
+      ringtoneOsc.onended = () => {
+        setTimeout(playTone, 2000);
+      };
+    }
+    playTone();
+  } catch (e) {
+    // Audio not supported
+  }
+}
+
+function stopRingtone() {
+  try {
+    if (ringtoneOsc) { ringtoneOsc.stop(); ringtoneOsc = null; }
+    if (ringtoneCtx) { ringtoneCtx.close(); ringtoneCtx = null; }
+  } catch (e) {}
+}
+
+async function startCall() {
   callState.status = 'connecting';
   const content = document.getElementById('content');
   content.innerHTML = renderActiveCall();
   mountCall();
 
-  // Simulate connection (replace with real Twilio integration)
+  startRingtone();
+
+  // Try real API call, fallback to simulation
+  let connected = false;
+  if (import.meta.env.VITE_API_URL) {
+    try {
+      await api.post('/api/calls/start', {
+        to: callState.number,
+        target_language: targetLang,
+      });
+      connected = true;
+    } catch (e) {
+      // API not available, simulate
+    }
+  }
+
+  // Simulate connection after 3 seconds (or real connection callback)
   setTimeout(() => {
-    callState.status = 'active';
-    callState.duration = 0;
-    callState.timer = setInterval(() => {
-      callState.duration++;
-      const statusEl = document.querySelector('.call-status');
-      if (statusEl) statusEl.textContent = formatDuration(callState.duration);
-    }, 1000);
+    stopRingtone();
+    // Countdown 3 seconds after "connection"
+    callState.status = 'countdown';
+    callState.countdown = 3;
     content.innerHTML = renderActiveCall();
     mountCall();
-  }, 2000);
+
+    const countdownInterval = setInterval(() => {
+      callState.countdown--;
+      const statusEl = document.querySelector('.countdown-num');
+      if (statusEl) statusEl.textContent = callState.countdown;
+      if (callState.countdown <= 0) {
+        clearInterval(countdownInterval);
+        callState.status = 'active';
+        callState.duration = 0;
+        callState.timer = setInterval(() => {
+          callState.duration++;
+          const el = document.querySelector('.call-status');
+          if (el) el.textContent = formatDuration(callState.duration);
+        }, 1000);
+        content.innerHTML = renderActiveCall();
+        mountCall();
+      }
+    }, 1000);
+  }, 3000);
 }
 
-function endCall() {
+async function endCall() {
+  stopRingtone();
   if (callState.timer) clearInterval(callState.timer);
-  callState = { status: 'idle', number: '', duration: 0, timer: null, muted: false, speaker: false };
+
+  // Save to history
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user && callState.duration > 0) {
+      await supabase.from('call_history').insert({
+        user_id: user.id,
+        phone_number: callState.number,
+        direction: 'outbound',
+        duration: callState.duration,
+        detected_language: targetLang,
+      });
+    }
+  } catch (e) {}
+
+  if (import.meta.env.VITE_API_URL) {
+    try { await api.post('/api/calls/end'); } catch (e) {}
+  }
+
+  callState = { status: 'idle', number: '', duration: 0, timer: null, muted: false, speaker: false, countdown: 3 };
   const content = document.getElementById('content');
   content.innerHTML = renderDialpad();
   mountCall();
 }
 
-// Allow external call trigger
 export function triggerCall(number) {
   callState.number = number;
   startCall();

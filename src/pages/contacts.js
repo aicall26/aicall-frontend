@@ -29,6 +29,8 @@ export function renderContacts() {
   );
   const groups = groupByLetter(filtered);
 
+  const supportsContactPicker = 'contacts' in navigator && 'ContactsManager' in window;
+
   return `
   <div class="contacts-page">
     <div class="contacts-header">
@@ -41,6 +43,12 @@ export function renderContacts() {
         Adaugă
       </button>
     </div>
+
+    ${supportsContactPicker ? `
+    <button class="btn-import-contacts" id="importContactsBtn">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg>
+      Importă din telefon
+    </button>` : ''}
 
     ${showForm ? `
     <div class="add-contact-form card">
@@ -56,6 +64,7 @@ export function renderContacts() {
     <div class="empty-state">
       <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" stroke-width="1.5"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
       <p>Nu ai contacte</p>
+      <p class="empty-hint">Apasă „Adaugă" pentru a adăuga un contact</p>
     </div>` : groups.map(([letter, items]) => `
     <div class="contact-group">
       <div class="group-letter">${letter}</div>
@@ -78,8 +87,7 @@ export function renderContacts() {
 }
 
 export async function mountContacts() {
-  if (contacts.length === 0) await loadContacts();
-  // Re-render with loaded data
+  if (contacts.length === 0 && !showForm) await loadContacts();
   const content = document.getElementById('content');
   if (contacts.length > 0 && !document.querySelector('.contact-row')) {
     content.innerHTML = renderContacts();
@@ -95,6 +103,7 @@ export async function mountContacts() {
     showForm = !showForm;
     content.innerHTML = renderContacts();
     mountContacts();
+    if (showForm) document.getElementById('newName')?.focus();
   });
 
   document.getElementById('cancelAdd')?.addEventListener('click', () => {
@@ -109,11 +118,48 @@ export async function mountContacts() {
     if (!name || !phone) return;
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
-    await supabase.from('contacts').insert({ user_id: user.id, name, phone_number: phone });
+    const { error } = await supabase.from('contacts').insert({ user_id: user.id, name, phone_number: phone });
+    if (error) {
+      alert('Eroare la salvare: ' + error.message);
+      return;
+    }
     showForm = false;
     await loadContacts();
     content.innerHTML = renderContacts();
     mountContacts();
+  });
+
+  // Import from phone contacts (Contact Picker API)
+  document.getElementById('importContactsBtn')?.addEventListener('click', async () => {
+    try {
+      const props = ['name', 'tel'];
+      const opts = { multiple: true };
+      const selected = await navigator.contacts.select(props, opts);
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      let imported = 0;
+      for (const contact of selected) {
+        const name = contact.name?.[0] || 'Fără nume';
+        const phone = contact.tel?.[0];
+        if (!phone) continue;
+        const exists = contacts.some(c => c.phone_number === phone);
+        if (exists) continue;
+        await supabase.from('contacts').insert({ user_id: user.id, name, phone_number: phone });
+        imported++;
+      }
+
+      await loadContacts();
+      content.innerHTML = renderContacts();
+      mountContacts();
+      if (imported > 0) {
+        alert(`${imported} contact${imported > 1 ? 'e' : ''} importat${imported > 1 ? 'e' : ''} cu succes!`);
+      }
+    } catch (e) {
+      if (e.name !== 'TypeError') {
+        alert('Nu s-au putut importa contactele.');
+      }
+    }
   });
 
   document.querySelectorAll('.contact-call-btn').forEach(btn => {
@@ -122,6 +168,7 @@ export async function mountContacts() {
 
   document.querySelectorAll('.contact-del-btn').forEach(btn => {
     btn.addEventListener('click', async () => {
+      if (!confirm('Sigur vrei să ștergi acest contact?')) return;
       await supabase.from('contacts').delete().eq('id', btn.dataset.id);
       await loadContacts();
       content.innerHTML = renderContacts();

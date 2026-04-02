@@ -3,6 +3,8 @@ import { supabase } from '../lib/supabase.js';
 let user = null;
 let profile = null;
 let editing = false;
+let changingPassword = false;
+let passwordMsg = null;
 
 export function renderProfile() {
   if (!profile) {
@@ -36,12 +38,12 @@ export function renderProfile() {
         <label>Telefon</label>
         ${editing
           ? `<input type="tel" id="editPhone" class="form-input" value="${profile.phone_number || ''}" placeholder="+40712345678" />`
-          : `<div class="field-value">${profile.phone_number || '—'}${profile.phone_verified ? ' <span class="verified-badge">✓ Verificat</span>' : ''}</div>`}
+          : `<div class="field-value">${profile.phone_number || '—'}${profile.phone_verified ? ' <span class="verified-badge">Verificat</span>' : ''}</div>`}
       </div>
 
       <div class="profile-field">
         <label>Voce clonată</label>
-        <div class="field-value">${profile.voice_id ? '<span class="verified-badge">✓ Activă</span>' : 'Nu este configurată'}</div>
+        <div class="field-value">${profile.voice_id ? '<span class="verified-badge">Activă</span>' : 'Nu este configurată'}</div>
       </div>
 
       <div class="profile-actions">
@@ -55,11 +57,38 @@ export function renderProfile() {
     </div>
 
     <div class="profile-card">
+      <h3 class="card-title">Schimbă parola</h3>
+      ${changingPassword ? `
+        ${passwordMsg ? `<div class="profile-msg ${passwordMsg.type}">${passwordMsg.text}</div>` : ''}
+        <div class="profile-field">
+          <label>Parola nouă</label>
+          <div class="password-wrapper">
+            <input type="password" id="newPassword" class="form-input" placeholder="Minimum 6 caractere" />
+            <button type="button" class="password-toggle" id="toggleNewPw" tabindex="-1">
+              <svg class="eye-open" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+              <svg class="eye-closed" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:none"><path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19m-6.72-1.07a3 3 0 11-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+            </button>
+          </div>
+        </div>
+        <div class="profile-field">
+          <label>Confirmă parola</label>
+          <input type="password" id="confirmPassword" class="form-input" placeholder="Repetă parola" />
+        </div>
+        <div class="profile-actions">
+          <button class="btn-small btn-ghost" id="cancelPassword">Anulează</button>
+          <button class="btn-small btn-accent" id="savePassword">Salvează parola</button>
+        </div>
+      ` : `
+        <button class="btn-small btn-accent" id="changePasswordBtn">Schimbă parola</button>
+      `}
+    </div>
+
+    <div class="profile-card">
       <h3 class="card-title">Setări</h3>
       <div class="setting-row">
         <span>Temă</span>
         <button class="btn-small btn-ghost" id="toggleThemeProfile">
-          ${document.documentElement.getAttribute('data-theme') === 'dark' ? '☀️ Light' : '🌙 Dark'}
+          ${document.documentElement.getAttribute('data-theme') === 'dark' ? 'Light' : 'Dark'}
         </button>
       </div>
     </div>
@@ -87,16 +116,12 @@ export async function mountProfile() {
 
   document.getElementById('editProfile')?.addEventListener('click', () => {
     editing = true;
-    const content = document.getElementById('content');
-    content.innerHTML = renderProfile();
-    mountProfile();
+    rerender();
   });
 
   document.getElementById('cancelEdit')?.addEventListener('click', () => {
     editing = false;
-    const content = document.getElementById('content');
-    content.innerHTML = renderProfile();
-    mountProfile();
+    rerender();
   });
 
   document.getElementById('saveProfile')?.addEventListener('click', async () => {
@@ -114,9 +139,55 @@ export async function mountProfile() {
       profile.phone_number = phone;
     }
     editing = false;
-    const content = document.getElementById('content');
-    content.innerHTML = renderProfile();
-    mountProfile();
+    rerender();
+  });
+
+  // Change password
+  document.getElementById('changePasswordBtn')?.addEventListener('click', () => {
+    changingPassword = true;
+    passwordMsg = null;
+    rerender();
+  });
+
+  document.getElementById('cancelPassword')?.addEventListener('click', () => {
+    changingPassword = false;
+    passwordMsg = null;
+    rerender();
+  });
+
+  document.getElementById('savePassword')?.addEventListener('click', async () => {
+    const newPw = document.getElementById('newPassword')?.value;
+    const confirmPw = document.getElementById('confirmPassword')?.value;
+
+    if (!newPw || newPw.length < 6) {
+      passwordMsg = { type: 'error', text: 'Parola trebuie să aibă minimum 6 caractere.' };
+      rerender();
+      return;
+    }
+    if (newPw !== confirmPw) {
+      passwordMsg = { type: 'error', text: 'Parolele nu coincid.' };
+      rerender();
+      return;
+    }
+
+    const { error } = await supabase.auth.updateUser({ password: newPw });
+    if (error) {
+      passwordMsg = { type: 'error', text: error.message };
+    } else {
+      passwordMsg = { type: 'success', text: 'Parola a fost schimbată cu succes!' };
+      changingPassword = false;
+    }
+    rerender();
+  });
+
+  // Password toggle in change password form
+  document.getElementById('toggleNewPw')?.addEventListener('click', () => {
+    const input = document.getElementById('newPassword');
+    const isHidden = input.type === 'password';
+    input.type = isHidden ? 'text' : 'password';
+    const btn = document.getElementById('toggleNewPw');
+    btn.querySelector('.eye-open').style.display = isHidden ? 'none' : 'block';
+    btn.querySelector('.eye-closed').style.display = isHidden ? 'block' : 'none';
   });
 
   document.getElementById('toggleThemeProfile')?.addEventListener('click', () => {
@@ -124,14 +195,20 @@ export async function mountProfile() {
     const next = html.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
     html.setAttribute('data-theme', next);
     localStorage.setItem('aicall-theme', next);
-    const content = document.getElementById('content');
-    content.innerHTML = renderProfile();
-    mountProfile();
+    rerender();
   });
 
   document.getElementById('logoutBtn')?.addEventListener('click', async () => {
     profile = null;
     editing = false;
+    changingPassword = false;
+    passwordMsg = null;
     await supabase.auth.signOut();
   });
+}
+
+function rerender() {
+  const content = document.getElementById('content');
+  content.innerHTML = renderProfile();
+  mountProfile();
 }

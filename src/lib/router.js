@@ -1,3 +1,4 @@
+import { supabase } from './supabase.js';
 import { renderCall, mountCall } from '../pages/call.js';
 import { renderContacts, mountContacts } from '../pages/contacts.js';
 import { renderHistory, mountHistory } from '../pages/history.js';
@@ -21,6 +22,7 @@ const icons = {
 };
 
 let activeTab = 'call';
+let menuOpen = false;
 
 function renderTabBar() {
   return `<nav class="tabbar">${Object.entries(pages).map(([id, p]) =>
@@ -34,7 +36,40 @@ function renderTabBar() {
 function renderHeader() {
   const theme = document.documentElement.getAttribute('data-theme') || 'dark';
   return `<header class="header">
-    <h1 class="header-title">Ai<span class="header-accent">Call</span></h1>
+    <div class="header-left">
+      <button class="logo-btn" id="logoBtn">
+        <h1 class="header-title">Ai<span class="header-accent">Call</span></h1>
+        <svg class="logo-chevron ${menuOpen ? 'open' : ''}" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+      </button>
+      ${menuOpen ? `
+      <div class="dropdown-menu" id="dropdownMenu">
+        <button class="dropdown-item" data-action="home">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+          Acasă
+        </button>
+        <button class="dropdown-item" data-action="settings">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
+          Setări
+        </button>
+        <button class="dropdown-item" data-action="help">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+          Ajutor
+        </button>
+        <button class="dropdown-item" data-action="about">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+          Despre noi
+        </button>
+        <button class="dropdown-item" data-action="privacy">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
+          Politica de confidențialitate
+        </button>
+        <div class="dropdown-divider"></div>
+        <button class="dropdown-item danger" data-action="logout">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+          Deconectare
+        </button>
+      </div>` : ''}
+    </div>
     <button class="theme-toggle" id="themeToggle" title="Schimbă tema">
       ${theme === 'dark'
         ? '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>'
@@ -54,26 +89,102 @@ function switchTab(tab) {
   });
 }
 
+function closeMenu() {
+  if (menuOpen) {
+    menuOpen = false;
+    const dropdown = document.getElementById('dropdownMenu');
+    if (dropdown) dropdown.remove();
+    document.querySelector('.logo-chevron')?.classList.remove('open');
+  }
+}
+
 function setupListeners() {
   document.querySelectorAll('.tab').forEach(btn => {
     btn.addEventListener('click', () => switchTab(btn.dataset.tab));
   });
 
+  document.getElementById('logoBtn')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    menuOpen = !menuOpen;
+    const headerEl = document.querySelector('.header');
+    headerEl.outerHTML = renderHeader();
+    setupHeaderListeners();
+    setupListeners();
+  });
+
+  setupHeaderListeners();
+
+  // Close menu on outside click
+  document.addEventListener('click', (e) => {
+    if (menuOpen && !e.target.closest('.header-left')) {
+      closeMenu();
+    }
+  });
+}
+
+function setupHeaderListeners() {
   document.getElementById('themeToggle')?.addEventListener('click', () => {
     const html = document.documentElement;
     const next = html.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
     html.setAttribute('data-theme', next);
     localStorage.setItem('aicall-theme', next);
-    // Re-render header to update icon
-    document.querySelector('.header').outerHTML = renderHeader();
-    document.getElementById('themeToggle').addEventListener('click', () => {
-      setupListeners(); // rebind after re-render
-    });
+    const headerEl = document.querySelector('.header');
+    headerEl.outerHTML = renderHeader();
+    setupHeaderListeners();
     setupListeners();
+  });
+
+  document.querySelectorAll('.dropdown-item').forEach(item => {
+    item.addEventListener('click', async () => {
+      const action = item.dataset.action;
+      closeMenu();
+      switch (action) {
+        case 'home':
+          switchTab('call');
+          break;
+        case 'settings':
+          switchTab('profile');
+          break;
+        case 'help':
+          showModal('Ajutor', 'Pentru asistență contactează-ne la support@aicall.ro sau vizitează secțiunea de întrebări frecvente.');
+          break;
+        case 'about':
+          showModal('Despre AiCall', 'AiCall — traducere vocală în timp real pentru apeluri telefonice. Versiunea 1.0.0\n\nTehnologie bazată pe inteligență artificială pentru comunicare fără bariere lingvistice.');
+          break;
+        case 'privacy':
+          showModal('Politica de confidențialitate', 'AiCall respectă confidențialitatea datelor tale. Înregistrările vocale sunt folosite exclusiv pentru clonarea vocii tale și nu sunt partajate cu terți.\n\nDatele sunt stocate securizat și poți solicita ștergerea lor oricând din setările contului.');
+          break;
+        case 'logout':
+          await supabase.auth.signOut();
+          break;
+      }
+    });
+  });
+}
+
+function showModal(title, text) {
+  const existing = document.querySelector('.modal-overlay');
+  if (existing) existing.remove();
+
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.innerHTML = `
+    <div class="modal-card">
+      <h3 class="modal-title">${title}</h3>
+      <p class="modal-text">${text.replace(/\n/g, '<br>')}</p>
+      <button class="btn-primary modal-close-btn">Închide</button>
+    </div>`;
+  document.getElementById('app').appendChild(overlay);
+
+  overlay.addEventListener('click', (e) => {
+    if (e.target === overlay || e.target.classList.contains('modal-close-btn')) {
+      overlay.remove();
+    }
   });
 }
 
 export function renderApp() {
+  menuOpen = false;
   const app = document.getElementById('app');
   app.innerHTML = `
     ${renderHeader()}
@@ -92,7 +203,6 @@ export function getActiveTab() {
 export function navigateAndCall(number) {
   activeTab = 'call';
   renderApp();
-  // Set the number in the dialpad
   const input = document.getElementById('phoneInput');
   if (input) input.value = number;
 }
