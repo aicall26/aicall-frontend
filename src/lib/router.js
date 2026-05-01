@@ -53,7 +53,7 @@ function renderHeader() {
         </button>
         <button class="dropdown-item" data-action="help">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-          Ajutor
+          Cum funcționează
         </button>
         <button class="dropdown-item" data-action="about">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
@@ -146,13 +146,18 @@ function setupHeaderListeners() {
           switchTab('profile');
           break;
         case 'help':
-          showModal('Ajutor', 'Pentru asistență contactează-ne la support@aicall.ro sau vizitează secțiunea de întrebări frecvente.');
+          showHowItWorksModal();
           break;
         case 'about':
           showModal('Despre AiCall', 'AiCall — traducere vocală în timp real pentru apeluri telefonice. Versiunea 1.0.0\n\nTehnologie bazată pe inteligență artificială pentru comunicare fără bariere lingvistice.');
           break;
         case 'privacy':
-          showModal('Politica de confidențialitate', 'AiCall respectă confidențialitatea datelor tale. Înregistrările vocale sunt folosite exclusiv pentru clonarea vocii tale și nu sunt partajate cu terți.\n\nDatele sunt stocate securizat și poți solicita ștergerea lor oricând din setările contului.');
+          showModal('Politica de Confidențialitate',
+            'Colectăm: email, nume, număr de telefon, istoric apeluri, înregistrări voce pentru clonare.\n\n' +
+            'Conținutul apelurilor este transmis temporar la OpenAI și ElevenLabs DOAR în timpul apelului — NU îl stocăm.\n\n' +
+            'Doar metadata (numere apelate, durată, limbă) este păstrată în istoric.\n\n' +
+            'Drepturi GDPR: poți cere ștergerea contului și a tuturor datelor oricând.\n\n' +
+            'Furnizori terți: Supabase (DB), Twilio (apeluri), OpenAI (traducere), ElevenLabs (voce), Vercel + Render (hosting).');
           break;
         case 'logout':
           await supabase.auth.signOut();
@@ -173,6 +178,80 @@ function showModal(title, text) {
       <h3 class="modal-title">${title}</h3>
       <p class="modal-text">${text.replace(/\n/g, '<br>')}</p>
       <button class="btn-primary modal-close-btn">Închide</button>
+    </div>`;
+  document.getElementById('app').appendChild(overlay);
+
+  overlay.addEventListener('click', (e) => {
+    if (e.target === overlay || e.target.classList.contains('modal-close-btn')) {
+      overlay.remove();
+    }
+  });
+}
+
+function showHowItWorksModal() {
+  const existing = document.querySelector('.modal-overlay');
+  if (existing) existing.remove();
+
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.innerHTML = `
+    <div class="modal-card howto-modal">
+      <h3 class="modal-title">Cum funcționează AiCall</h3>
+      <div class="howto-content">
+        <div class="howto-step">
+          <div class="howto-num">1</div>
+          <div class="howto-body">
+            <h4>Cumpără un număr AiCall</h4>
+            <p>Mergi la <strong>Profil → Numărul tău AiCall</strong>, alegi țara și cumperi un număr. Costul lunar (~$1.15 pentru UK) se deduce din credit.</p>
+          </div>
+        </div>
+
+        <div class="howto-step">
+          <div class="howto-num">2</div>
+          <div class="howto-body">
+            <h4>Clonează-ți vocea</h4>
+            <p>În tabul <strong>Vocea Mea</strong> citești un text de 2 minute. Vocea ta este clonată de AI și folosită când vorbești în alte limbi.</p>
+          </div>
+        </div>
+
+        <div class="howto-step">
+          <div class="howto-num">3</div>
+          <div class="howto-body">
+            <h4>Sună sau primești apeluri</h4>
+            <p><strong>Când suni:</strong> tu vorbești în română, interlocutorul aude vocea ta în engleză (sau altă limbă).</p>
+            <p><strong>Când primești apel:</strong> AiCall detectează limba interlocutorului și o traduce în română pentru tine cu o voce expresivă.</p>
+          </div>
+        </div>
+
+        <div class="howto-step">
+          <div class="howto-num">4</div>
+          <div class="howto-body">
+            <h4>Costuri și credit</h4>
+            <p><strong>$0.08/minut</strong> pentru apel cu traducere completă (~$4.60/oră). Apel fără traducere: doar Twilio ~$0.03/min.</p>
+            <p>La 15 minute rămase primești <strong>avertisment</strong>, la 5 minute alt avertisment, iar la 0 apelul se închide automat.</p>
+          </div>
+        </div>
+
+        <div class="howto-step">
+          <div class="howto-num">5</div>
+          <div class="howto-body">
+            <h4>Contacte cunoscute</h4>
+            <p>În <strong>Agendă</strong> poți seta pentru fiecare contact: <strong>"Vorbim aceeași limbă"</strong> (fără traducere = mai ieftin) sau <strong>"Cu traducere → EN"</strong> (limba preferată automat).</p>
+          </div>
+        </div>
+
+        <div class="howto-step">
+          <div class="howto-num">6</div>
+          <div class="howto-body">
+            <h4>Tehnologii folosite</h4>
+            <p>📞 <strong>Twilio</strong> — telefonia<br>
+            🎙️ <strong>OpenAI Realtime</strong> — recunoaștere voce + auto-detect limbă<br>
+            🌐 <strong>GPT-4o</strong> — traducere<br>
+            🗣️ <strong>ElevenLabs Flash + v3</strong> — voce clonată + voce expresivă</p>
+          </div>
+        </div>
+      </div>
+      <button class="btn-primary modal-close-btn">Am înțeles</button>
     </div>`;
   document.getElementById('app').appendChild(overlay);
 

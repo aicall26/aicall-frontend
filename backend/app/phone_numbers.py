@@ -19,15 +19,70 @@ log = logging.getLogger("aicall.numbers")
 
 # Pretul lunar Twilio per tip + tara (in cents).
 # Sursa: twilio.com/voice/pricing - actualizeaza periodic.
+# Daca o combinatie nu apare aici, folosim default-ul DEFAULT_PRICING_CENTS.
+DEFAULT_PRICING_CENTS = {"local": 200, "mobile": 500, "tollfree": 200}
+
 NUMBER_PRICING_CENTS = {
-    ("GB", "local"): 115,    # UK local £1 ≈ $1.15
-    ("GB", "mobile"): 375,   # UK mobile ~$3.75
+    # UK & Ireland
+    ("GB", "local"): 115,
+    ("GB", "mobile"): 375,
+    ("IE", "local"): 115,
+    ("IE", "mobile"): 400,
+    # Western Europe
+    ("DE", "local"): 110,
+    ("DE", "mobile"): 465,
+    ("FR", "local"): 110,
+    ("FR", "mobile"): 565,
+    ("ES", "local"): 110,
+    ("ES", "mobile"): 200,
+    ("IT", "local"): 110,
+    ("IT", "mobile"): 200,
+    ("NL", "local"): 110,
+    ("NL", "mobile"): 200,
+    ("BE", "local"): 110,
+    ("BE", "mobile"): 200,
+    ("AT", "local"): 110,
+    ("AT", "mobile"): 200,
+    ("CH", "local"): 450,
+    ("CH", "mobile"): 600,
+    ("PT", "local"): 110,
+    ("PT", "mobile"): 200,
+    # Nordics
+    ("SE", "local"): 110,
+    ("SE", "mobile"): 250,
+    ("NO", "local"): 110,
+    ("NO", "mobile"): 250,
+    ("DK", "local"): 110,
+    ("DK", "mobile"): 250,
+    ("FI", "local"): 110,
+    ("FI", "mobile"): 250,
+    # Eastern Europe
+    ("PL", "local"): 110,
+    ("PL", "mobile"): 200,
+    ("RO", "local"): 110,
+    ("RO", "mobile"): 200,
+    ("HU", "local"): 110,
+    ("CZ", "local"): 110,
+    ("SK", "local"): 110,
+    ("BG", "local"): 110,
+    ("GR", "local"): 110,
+    # North America
     ("US", "local"): 115,
     ("US", "tollfree"): 200,
-    ("DE", "local"): 110,
-    ("FR", "local"): 110,
-    ("RO", "local"): 110,
+    ("CA", "local"): 115,
+    ("CA", "tollfree"): 200,
+    # Other useful
+    ("AU", "local"): 600,
+    ("AU", "mobile"): 600,
 }
+
+
+def get_price_cents(country: str, number_type: str) -> int:
+    """Returneaza pretul lunar in cents, cu fallback default."""
+    return NUMBER_PRICING_CENTS.get(
+        (country.upper(), number_type),
+        DEFAULT_PRICING_CENTS.get(number_type, 200)
+    )
 
 
 def _twilio_client():
@@ -56,7 +111,7 @@ def search_available(country: str = "GB", number_type: str = "local", limit: int
     else:
         results = base.local.list(limit=limit, voice_enabled=True)
 
-    monthly_cents = NUMBER_PRICING_CENTS.get((country, number_type), 200)
+    monthly_cents = get_price_cents(country, number_type)
 
     out = []
     for n in results:
@@ -92,7 +147,7 @@ def buy_number(user_id: str, phone_number: str, country: str, number_type: str) 
     if u.get("twilio_phone_number"):
         raise ValueError("User already has a phone number. Release the existing one first.")
 
-    monthly_cents = NUMBER_PRICING_CENTS.get((country.upper(), number_type), 200)
+    monthly_cents = get_price_cents(country, number_type)
 
     if u["credit_cents"] < monthly_cents:
         raise ValueError(

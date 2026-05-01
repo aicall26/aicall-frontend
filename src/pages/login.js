@@ -1,6 +1,7 @@
 import { supabase } from '../lib/supabase.js';
 
-let view = 'login'; // 'login' | 'confirmation' | 'resetPassword' | 'resetSent'
+let view = 'login'; // 'login' | 'confirmation' | 'resetPassword' | 'resetSent' | 'tcModal' | 'privacyModal'
+let modalOpen = null; // 'tc' | 'privacy' | null
 
 export function renderLogin() {
   if (view === 'confirmation') {
@@ -20,7 +21,7 @@ export function renderLogin() {
           <path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>
         </svg>
         <h2>Verifică-ți email-ul</h2>
-        <p>Am trimis un link de confirmare pe adresa ta de email. Accesează link-ul pentru a-ți activa contul.</p>
+        <p>Am trimis un link de confirmare pe adresa ta de email. Apasă pe link și vei fi conectat automat.</p>
         <button class="btn-primary" id="backToLogin" style="margin-top:20px">Înapoi la autentificare</button>
       </div>
     </div>`;
@@ -117,9 +118,90 @@ export function renderLogin() {
             </button>
           </div>
         </div>
+        <div id="termsField" class="form-group terms-group" style="display:none">
+          <label class="checkbox-label">
+            <input type="checkbox" id="acceptTerms" />
+            <span class="checkbox-custom"></span>
+            <span class="checkbox-text">
+              Sunt de acord cu
+              <button type="button" class="link-btn" id="openTC">Termenii și Condițiile</button>
+              și
+              <button type="button" class="link-btn" id="openPrivacy">Politica de Confidențialitate</button>
+            </span>
+          </label>
+        </div>
         <button type="submit" class="btn-primary" id="submitBtn">Autentificare</button>
       </form>
       <button class="forgot-link" id="forgotPassword">Ai uitat parola?</button>
+    </div>
+
+    ${modalOpen === 'tc' ? renderTCModal() : ''}
+    ${modalOpen === 'privacy' ? renderPrivacyModal() : ''}
+  </div>`;
+}
+
+function renderTCModal() {
+  return `
+  <div class="modal-overlay" id="modalOverlay">
+    <div class="modal-card terms-modal">
+      <h3>Termeni și Condiții</h3>
+      <div class="terms-content">
+        <h4>1. Despre serviciu</h4>
+        <p>AiCall este o aplicație de traducere vocală în timp real pentru apeluri telefonice. Permite utilizatorilor să comunice în limbi diferite folosind tehnologia AI.</p>
+
+        <h4>2. Plăți și credit</h4>
+        <p>Utilizarea serviciului consumă credit din contul tău. Costul per minut depinde de tipul de apel și serviciile activate (traducere, voce clonată).</p>
+        <p>Numerele de telefon AiCall au cost lunar fix care se deduce automat din credit la cumpărare și la fiecare reînnoire (la 30 de zile).</p>
+        <p>Twilio nu returnează costul lunar al numărului dacă renunți la el înainte de finalul lunii.</p>
+
+        <h4>3. Restricții</h4>
+        <p>Utilizatorul este responsabil pentru a respecta legislația locală privind înregistrarea și traducerea apelurilor telefonice. În unele țări, este obligatoriu consimțământul ambelor părți.</p>
+        <p>Este interzisă folosirea serviciului pentru apeluri abuzive, hărțuire, fraudă sau orice activitate ilegală.</p>
+
+        <h4>4. Limitarea răspunderii</h4>
+        <p>AiCall nu garantează acuratețea 100% a traducerii. Recomandăm verificarea informațiilor critice prin alte mijloace.</p>
+        <p>Serviciul depinde de furnizori terți (Twilio, OpenAI, ElevenLabs). Întreruperile lor pot afecta funcționalitatea.</p>
+
+        <h4>5. Cont și securitate</h4>
+        <p>Ești responsabil pentru păstrarea în siguranță a credențialelor contului tău. AiCall nu va fi responsabil pentru folosirea neautorizată.</p>
+
+        <h4>6. Modificări</h4>
+        <p>AiCall își rezervă dreptul de a modifica acești termeni. Te vom notifica prin email despre modificări semnificative.</p>
+      </div>
+      <button class="btn-primary" id="closeModal">Am înțeles</button>
+    </div>
+  </div>`;
+}
+
+function renderPrivacyModal() {
+  return `
+  <div class="modal-overlay" id="modalOverlay">
+    <div class="modal-card terms-modal">
+      <h3>Politica de Confidențialitate</h3>
+      <div class="terms-content">
+        <h4>1. Date colectate</h4>
+        <p>Colectăm: email, nume (opțional), număr de telefon (opțional), istoricul apelurilor (numere apelate, durată, limbi detectate), înregistrări vocale pentru clonarea vocii.</p>
+
+        <h4>2. Cum folosim datele</h4>
+        <p><strong>Email și parolă:</strong> autentificare și comunicare cu tine.</p>
+        <p><strong>Înregistrări voce:</strong> trimitem la ElevenLabs pentru clonarea vocii. ElevenLabs păstrează modelul vocii pe serverele lor.</p>
+        <p><strong>Conținutul apelurilor:</strong> audio-ul apelurilor este transmis către OpenAI (transcriere și traducere) și ElevenLabs (sinteză vocală) DOAR în timpul apelului. NU îl stocăm permanent.</p>
+        <p><strong>Metadata apelurilor:</strong> stocăm doar numerele apelate, durata și limba detectată — pentru istoric și facturare. Conținutul conversațiilor NU este salvat.</p>
+
+        <h4>3. Drepturile tale (GDPR)</h4>
+        <p>Ai dreptul să: accesezi datele tale, ceri ștergerea contului și a tuturor datelor asociate, exporți datele tale, retragi consimțământul oricând.</p>
+        <p>Pentru orice cerere, contactează-ne la suport.</p>
+
+        <h4>4. Cookies și storage</h4>
+        <p>Folosim localStorage pentru sesiunea ta de autentificare și preferințe (temă, limbă). NU folosim cookies de tracking.</p>
+
+        <h4>5. Furnizori terți</h4>
+        <p>Date sunt procesate de: <strong>Supabase</strong> (autentificare și bază de date), <strong>Twilio</strong> (apeluri telefonice), <strong>OpenAI</strong> (traducere), <strong>ElevenLabs</strong> (voce clonată), <strong>Vercel</strong> și <strong>Render</strong> (hosting). Toți respectă GDPR.</p>
+
+        <h4>6. Securitate</h4>
+        <p>Folosim conexiuni criptate HTTPS. Parolele sunt hashed prin Supabase Auth. Cheile API nu sunt expuse niciodată în browser.</p>
+      </div>
+      <button class="btn-primary" id="closeModal">Am înțeles</button>
     </div>
   </div>`;
 }
@@ -131,6 +213,28 @@ function rerender() {
 }
 
 export function mountLogin() {
+  // Modal close
+  document.getElementById('closeModal')?.addEventListener('click', () => {
+    modalOpen = null;
+    rerender();
+  });
+  document.getElementById('modalOverlay')?.addEventListener('click', (e) => {
+    if (e.target.id === 'modalOverlay') {
+      modalOpen = null;
+      rerender();
+    }
+  });
+
+  // Open T&C
+  document.getElementById('openTC')?.addEventListener('click', () => {
+    modalOpen = 'tc';
+    rerender();
+  });
+  document.getElementById('openPrivacy')?.addEventListener('click', () => {
+    modalOpen = 'privacy';
+    rerender();
+  });
+
   // Back to login from any sub-view
   document.getElementById('backToLogin')?.addEventListener('click', () => {
     view = 'login';
@@ -159,7 +263,9 @@ export function mountLogin() {
     errorEl.style.display = 'none';
 
     try {
-      const { error } = await supabase.auth.resetPasswordForEmail(email);
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: window.location.origin,
+      });
       if (error) throw error;
       view = 'resetSent';
       rerender();
@@ -185,10 +291,10 @@ export function mountLogin() {
       mode = tab.dataset.mode;
       document.querySelectorAll('.login-tab').forEach(t => t.classList.toggle('active', t === tab));
       document.getElementById('nameField').style.display = mode === 'register' ? 'block' : 'none';
+      document.getElementById('termsField').style.display = mode === 'register' ? 'block' : 'none';
       document.getElementById('submitBtn').textContent = mode === 'login' ? 'Autentificare' : 'Înregistrare';
       document.getElementById('password').autocomplete = mode === 'login' ? 'current-password' : 'new-password';
       document.getElementById('loginError').style.display = 'none';
-      // Show/hide forgot password link
       const forgotEl = document.getElementById('forgotPassword');
       if (forgotEl) forgotEl.style.display = mode === 'login' ? 'block' : 'none';
     });
@@ -221,10 +327,20 @@ export function mountLogin() {
     try {
       if (mode === 'register') {
         const fullName = document.getElementById('fullName').value.trim();
+        const acceptTerms = document.getElementById('acceptTerms').checked;
+        if (!acceptTerms) {
+          throw new Error('Trebuie să accepți Termenii și Politica de Confidențialitate.');
+        }
         const { error } = await supabase.auth.signUp({
           email,
           password,
-          options: { data: { full_name: fullName } },
+          options: {
+            data: {
+              full_name: fullName,
+              terms_accepted_at: new Date().toISOString(),
+            },
+            emailRedirectTo: window.location.origin,
+          },
         });
         if (error) throw error;
         view = 'confirmation';

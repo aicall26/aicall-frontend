@@ -22,11 +22,36 @@ let phoneSection = {
 };
 
 const COUNTRY_OPTIONS = [
-  { code: 'GB', label: 'Marea Britanie (UK)' },
-  { code: 'US', label: 'Statele Unite (US)' },
-  { code: 'DE', label: 'Germania (DE)' },
-  { code: 'FR', label: 'Franta (FR)' },
-  { code: 'RO', label: 'Romania (RO)' },
+  // Cele mai importante / cele mai folosite
+  { code: 'GB', label: '🇬🇧 Marea Britanie (UK)', group: 'Europa de Vest' },
+  { code: 'IE', label: '🇮🇪 Irlanda', group: 'Europa de Vest' },
+  { code: 'DE', label: '🇩🇪 Germania', group: 'Europa de Vest' },
+  { code: 'FR', label: '🇫🇷 Franța', group: 'Europa de Vest' },
+  { code: 'ES', label: '🇪🇸 Spania', group: 'Europa de Vest' },
+  { code: 'IT', label: '🇮🇹 Italia', group: 'Europa de Vest' },
+  { code: 'NL', label: '🇳🇱 Olanda', group: 'Europa de Vest' },
+  { code: 'BE', label: '🇧🇪 Belgia', group: 'Europa de Vest' },
+  { code: 'AT', label: '🇦🇹 Austria', group: 'Europa de Vest' },
+  { code: 'CH', label: '🇨🇭 Elveția', group: 'Europa de Vest' },
+  { code: 'PT', label: '🇵🇹 Portugalia', group: 'Europa de Vest' },
+  // Nordics
+  { code: 'SE', label: '🇸🇪 Suedia', group: 'Țările Nordice' },
+  { code: 'NO', label: '🇳🇴 Norvegia', group: 'Țările Nordice' },
+  { code: 'DK', label: '🇩🇰 Danemarca', group: 'Țările Nordice' },
+  { code: 'FI', label: '🇫🇮 Finlanda', group: 'Țările Nordice' },
+  // Estul Europei
+  { code: 'RO', label: '🇷🇴 România', group: 'Europa de Est' },
+  { code: 'PL', label: '🇵🇱 Polonia', group: 'Europa de Est' },
+  { code: 'HU', label: '🇭🇺 Ungaria', group: 'Europa de Est' },
+  { code: 'CZ', label: '🇨🇿 Cehia', group: 'Europa de Est' },
+  { code: 'SK', label: '🇸🇰 Slovacia', group: 'Europa de Est' },
+  { code: 'BG', label: '🇧🇬 Bulgaria', group: 'Europa de Est' },
+  { code: 'GR', label: '🇬🇷 Grecia', group: 'Europa de Est' },
+  // America
+  { code: 'US', label: '🇺🇸 Statele Unite', group: 'America de Nord' },
+  { code: 'CA', label: '🇨🇦 Canada', group: 'America de Nord' },
+  // Altele
+  { code: 'AU', label: '🇦🇺 Australia', group: 'Altele' },
 ];
 
 const TYPE_OPTIONS = [
@@ -172,7 +197,19 @@ function renderPhoneNumberCard() {
       <div class="phone-search-field">
         <label>Țară</label>
         <select id="searchCountry" class="form-input">
-          ${COUNTRY_OPTIONS.map(c => `<option value="${c.code}" ${c.code === phoneSection.searchCountry ? 'selected' : ''}>${c.label}</option>`).join('')}
+          ${(() => {
+            // Group countries by region
+            const groups = {};
+            COUNTRY_OPTIONS.forEach(c => {
+              if (!groups[c.group]) groups[c.group] = [];
+              groups[c.group].push(c);
+            });
+            return Object.entries(groups).map(([group, items]) =>
+              `<optgroup label="${group}">
+                ${items.map(c => `<option value="${c.code}" ${c.code === phoneSection.searchCountry ? 'selected' : ''}>${c.label}</option>`).join('')}
+              </optgroup>`
+            ).join('');
+          })()}
         </select>
       </div>
       <div class="phone-search-field">
