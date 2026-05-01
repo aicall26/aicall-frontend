@@ -20,12 +20,15 @@ log = logging.getLogger("aicall")
 
 app = FastAPI(title="AiCall Backend", version="0.1.0")
 
+# CORS: permite TOATE deployment-urile Vercel (productie + preview branches)
+# + localhost dev. Auth se face oricum prin JWT Bearer token.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=config.ALLOWED_ORIGINS or ["*"],
+    allow_origin_regex=r"https://[a-z0-9-]+\.vercel\.app|http://localhost(:\d+)?",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["*"],
 )
 
 
