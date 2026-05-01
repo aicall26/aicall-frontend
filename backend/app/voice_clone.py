@@ -1,0 +1,237 @@
+"""
+ElevenLabs Instant Voice Cloning (IVC) si TTS multilingual.
+
+Flow:
+1. clone_voice - primeste audio bytes de la frontend, trimite la ElevenLabs IVC,
+   primeste voice_id, salveaza in Supabase users.voice_id
+2. test_tts - genereaza audio sample cu vocea clonata in alta limba
+3. delete_voice - sterge vocea de la ElevenLabs si din profilul user-ului
+
+ElevenLabs API:
+- POST https://api.elevenlabs.io/v1/voices/add (multipart - upload audio)
+- POST https://api.elevenlabs.io/v1/text-to-speech/{voice_id} (JSON - text in)
+- DELETE https://api.elevenlabs.io/v1/voices/{voice_id}
+"""
+import logging
+from datetime import datetime, timezone
+from typing import Optional
+import httpx
+from .config import config
+from .db import supabase_admin
+
+
+log = logging.getLogger("aicall.voice")
+
+ELEVENLABS_BASE = "https://api.elevenlabs.io/v1"
+
+# Setari optime pt voce clonata (din memoria mea de la W2 ClipGrow)
+VOICE_SETTINGS = {
+    "stability": 0.65,
+    "similarity_boost": 0.80,
+    "style": 0.10,
+    "use_speaker_boost": True,
+}
+
+# Multilingual model - suporta 29 de limbi cu accent natural
+MODEL_MULTILINGUAL = "eleven_multilingual_v2"
+# Flash - mai rapid, latenta 75ms, pentru streaming live
+MODEL_FLASH = "eleven_flash_v2_5"
+
+# Limbi suportate cu sample text de test
+TEST_SAMPLES = {
+    "EN": "Hello, this is a test of my cloned voice in English.",
+    "DE": "Hallo, das ist ein Test meiner geklonten Stimme auf Deutsch.",
+    "FR": "Bonjour, ceci est un test de ma voix clonée en français.",
+    "ES": "Hola, esta es una prueba de mi voz clonada en español.",
+    "IT": "Ciao, questo è un test della mia voce clonata in italiano.",
+    "PT": "Olá, este é um teste da minha voz clonada em português.",
+    "PL": "Cześć, to jest test mojego sklonowanego głosu po polsku.",
+    "NL": "Hallo, dit is een test van mijn gekloonde stem in het Nederlands.",
+    "RO": "Salut, acesta este un test al vocii mele clonate in romana.",
+    "GR": "Γεια σας, αυτή είναι μια δοκιμή της κλωνοποιημένης φωνής μου στα ελληνικά.",
+    "HU": "Helló, ez egy teszt az én klónozott hangomról magyarul.",
+    "CZ": "Ahoj, tohle je test mého klonovaného hlasu v češtině.",
+    "BG": "Здравейте, това е тест на моя клониран глас на български.",
+    "RU": "Привет, это тест моего клонированного голоса на русском.",
+}
+
+
+def _elevenlabs_headers(json_response: bool = True) -> dict:
+    headers = {"xi-api-key": config.ELEVENLABS_API_KEY}
+    if json_response:
+        headers["Accept"] = "application/json"
+    return headers
+
+
+async def clone_voice(
+    user_id: str,
+    audio_bytes: bytes,
+    mime_type: str = "audio/webm",
+    voice_name: Optional[str] = None,
+) -> dict:
+    """
+    Cloneaza voce de la audio bytes.
+    Sterge voice_id-ul anterior daca exista (free up slot ElevenLabs).
+    Returneaza voice_id nou.
+    """
+    if not config.ELEVENLABS_API_KEY:
+        raise RuntimeError("ElevenLabs not configured")
+
+    sb = supabase_admin()
+
+    # Citesc voice_id curent (daca exista, il sterg dupa upload reusit)
+    user_res = sb.table("users").select("voice_id, full_name, email").eq("id", user_id).maybe_single().execute()
+    if not user_res or not user_res.data:
+        raise ValueError("User not found")
+
+    old_voice_id = user_res.data.get("voice_id")
+    user_label = user_res.data.get("full_name") or user_res.data.get("email") or user_id[:8]
+
+    # Numele clonei trebuie unic per user (stergem oldul dupa)
+    if not voice_name:
+        voice_name = f"AiCall-{user_id[:8]}"
+
+    # Upload la ElevenLabs IVC
+    async with httpx.AsyncClient(timeout=120.0) as client:
+        files = {
+            "files": (f"voice-{user_id[:8]}.webm", audio_bytes, mime_type),
+        }
+        data = {
+            "name": voice_name,
+            "description": f"AiCall voice clone for {user_label}",
+        }
+        try:
+            r = await client.post(
+                f"{ELEVENLABS_BASE}/voices/add",
+                files=files,
+                data=data,
+                headers=_elevenlabs_headers(),
+            )
+        except httpx.RequestError as e:
+            log.exception("ElevenLabs request failed")
+            raise RuntimeError(f"Eroare retea ElevenLabs: {e}")
+
+    if r.status_code >= 400:
+        try:
+            err = r.json()
+            err_msg = err.get("detail", {}).get("message") if isinstance(err.get("detail"), dict) else err.get("detail") or str(err)
+        except Exception:
+            err_msg = r.text[:200]
+        log.error(f"ElevenLabs IVC failed {r.status_code}: {err_msg}")
+        raise RuntimeError(f"ElevenLabs error: {err_msg}")
+
+    body = r.json()
+    new_voice_id = body.get("voice_id")
+    if not new_voice_id:
+        raise RuntimeError(f"ElevenLabs nu a returnat voice_id: {body}")
+
+    # Salveaza in Supabase
+    sb.table("users").update({
+        "voice_id": new_voice_id,
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }).eq("id", user_id).execute()
+
+    # Sterge oldul daca a existat (after success, ca sa nu pierdem clona pe esuare)
+    if old_voice_id and old_voice_id != new_voice_id:
+        try:
+            await _delete_elevenlabs_voice(old_voice_id)
+        except Exception as e:
+            log.warning(f"Failed to delete old voice {old_voice_id}: {e}")
+            # Non-fatal
+
+    return {
+        "voice_id": new_voice_id,
+        "name": voice_name,
+        "requires_verification": body.get("requires_verification", False),
+    }
+
+
+async def _delete_elevenlabs_voice(voice_id: str) -> None:
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        r = await client.delete(
+            f"{ELEVENLABS_BASE}/voices/{voice_id}",
+            headers=_elevenlabs_headers(),
+        )
+        if r.status_code >= 400 and r.status_code != 404:
+            raise RuntimeError(f"Delete voice failed: {r.status_code} {r.text[:200]}")
+
+
+async def delete_user_voice(user_id: str) -> dict:
+    """Sterge vocea de la ElevenLabs si curata users.voice_id."""
+    sb = supabase_admin()
+    user_res = sb.table("users").select("voice_id").eq("id", user_id).maybe_single().execute()
+    if not user_res or not user_res.data:
+        raise ValueError("User not found")
+
+    voice_id = user_res.data.get("voice_id")
+    if not voice_id:
+        return {"deleted": False, "message": "Nu ai voce clonata"}
+
+    try:
+        await _delete_elevenlabs_voice(voice_id)
+    except Exception as e:
+        log.warning(f"ElevenLabs delete failed: {e}")
+        # Continui sa curat in DB chiar daca EL a esuat
+
+    sb.table("users").update({
+        "voice_id": None,
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }).eq("id", user_id).execute()
+
+    return {"deleted": True}
+
+
+async def synthesize_test(
+    user_id: str,
+    text: str,
+    language: str = "EN",
+    use_flash: bool = False,
+) -> bytes:
+    """
+    Genereaza audio cu vocea clonata. Returneaza bytes mp3.
+    Daca text e gol, foloseste sample-ul default pentru limba.
+    """
+    if not config.ELEVENLABS_API_KEY:
+        raise RuntimeError("ElevenLabs not configured")
+
+    sb = supabase_admin()
+    res = sb.table("users").select("voice_id").eq("id", user_id).maybe_single().execute()
+    if not res or not res.data or not res.data.get("voice_id"):
+        raise ValueError("Trebuie sa-ti clonezi vocea mai intai")
+    voice_id = res.data["voice_id"]
+
+    if not text:
+        text = TEST_SAMPLES.get(language, TEST_SAMPLES["EN"])
+    if len(text) > 1000:
+        text = text[:1000]
+
+    model = MODEL_FLASH if use_flash else MODEL_MULTILINGUAL
+
+    async with httpx.AsyncClient(timeout=60.0) as client:
+        try:
+            r = await client.post(
+                f"{ELEVENLABS_BASE}/text-to-speech/{voice_id}",
+                headers={
+                    "xi-api-key": config.ELEVENLABS_API_KEY,
+                    "Accept": "audio/mpeg",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "text": text,
+                    "model_id": model,
+                    "voice_settings": VOICE_SETTINGS,
+                },
+            )
+        except httpx.RequestError as e:
+            raise RuntimeError(f"ElevenLabs TTS request failed: {e}")
+
+    if r.status_code >= 400:
+        try:
+            err = r.json()
+            err_msg = err.get("detail", {}).get("message") if isinstance(err.get("detail"), dict) else err.get("detail") or str(err)
+        except Exception:
+            err_msg = r.text[:200]
+        log.error(f"ElevenLabs TTS failed {r.status_code}: {err_msg}")
+        raise RuntimeError(f"ElevenLabs TTS error: {err_msg}")
+
+    return r.content

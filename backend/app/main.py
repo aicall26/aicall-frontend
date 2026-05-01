@@ -1,5 +1,5 @@
 """FastAPI app - AiCall backend."""
-from fastapi import FastAPI, Depends, HTTPException, Request
+from fastapi import FastAPI, Depends, HTTPException, Request, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response, JSONResponse
 from pydantic import BaseModel
@@ -13,6 +13,7 @@ from .db import supabase_admin
 from .billing import get_user_credit, can_start_call, deduct_seconds, topup_credit
 from .twilio_voice import generate_access_token, twiml_outbound, twiml_inbound_to_user
 from . import phone_numbers as pn
+from . import voice_clone
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("aicall")
@@ -248,6 +249,107 @@ def call_end(req: CallEndRequest, user_id: str = Depends(get_current_user_id)):
     }).execute()
 
     return {"ok": True, "duration_seconds": duration, "cost_cents": s.get("total_billed_cents", 0)}
+
+
+# ============================================================
+# Voice cloning (ElevenLabs IVC + multilingual TTS test)
+# ============================================================
+@app.post("/api/voice/clone")
+async def voice_clone_endpoint(
+    audio: UploadFile = File(...),
+    user_id: str = Depends(get_current_user_id),
+):
+    """
+    Cloneaza vocea user-ului prin ElevenLabs Instant Voice Cloning.
+    Inlocuieste vocea anterioara daca exista.
+    """
+    if not config.ELEVENLABS_API_KEY:
+        raise HTTPException(503, "ElevenLabs not configured")
+
+    audio_bytes = await audio.read()
+    if len(audio_bytes) < 50_000:  # ~3-5 secunde audio comprimat
+        raise HTTPException(400, "Audio prea scurt - inregistreaza minim 30 secunde")
+    if len(audio_bytes) > 50_000_000:  # 50MB
+        raise HTTPException(413, "Audio prea mare - maxim 50MB")
+
+    try:
+        result = await voice_clone.clone_voice(
+            user_id=user_id,
+            audio_bytes=audio_bytes,
+            mime_type=audio.content_type or "audio/webm",
+        )
+        return result
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    except RuntimeError as e:
+        raise HTTPException(502, str(e))
+    except Exception as e:
+        log.exception("Voice clone failed")
+        raise HTTPException(500, f"Eroare server: {e}")
+
+
+@app.delete("/api/voice/clone")
+async def voice_clone_delete(user_id: str = Depends(get_current_user_id)):
+    if not config.ELEVENLABS_API_KEY:
+        raise HTTPException(503, "ElevenLabs not configured")
+    try:
+        return await voice_clone.delete_user_voice(user_id)
+    except ValueError as e:
+        raise HTTPException(404, str(e))
+    except Exception as e:
+        log.exception("Voice delete failed")
+        raise HTTPException(500, str(e))
+
+
+class VoiceTestRequest(BaseModel):
+    language: str = "EN"
+    text: Optional[str] = None
+    flash: bool = False
+
+
+@app.post("/api/voice/test-tts")
+async def voice_test_tts(
+    req: VoiceTestRequest,
+    user_id: str = Depends(get_current_user_id),
+):
+    """
+    Genereaza audio cu vocea clonata in limba target.
+    Returneaza mp3 stream pe care frontend-ul il poate reda direct.
+    """
+    if not config.ELEVENLABS_API_KEY:
+        raise HTTPException(503, "ElevenLabs not configured")
+    try:
+        audio = await voice_clone.synthesize_test(
+            user_id=user_id,
+            text=req.text or "",
+            language=req.language,
+            use_flash=req.flash,
+        )
+        return Response(
+            content=audio,
+            media_type="audio/mpeg",
+            headers={"Cache-Control": "no-store"},
+        )
+    except ValueError as e:
+        raise HTTPException(404, str(e))
+    except RuntimeError as e:
+        raise HTTPException(502, str(e))
+    except Exception as e:
+        log.exception("Voice test failed")
+        raise HTTPException(500, str(e))
+
+
+@app.get("/api/voice/info")
+def voice_info(user_id: str = Depends(get_current_user_id)):
+    """Info despre vocea curenta clonata."""
+    sb = supabase_admin()
+    res = sb.table("users").select("voice_id").eq("id", user_id).maybe_single().execute()
+    voice_id = res.data.get("voice_id") if res and res.data else None
+    return {
+        "has_voice": bool(voice_id),
+        "voice_id": voice_id,
+        "supported_languages": list(voice_clone.TEST_SAMPLES.keys()),
+    }
 
 
 # ============================================================

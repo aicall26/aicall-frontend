@@ -15,6 +15,8 @@ let callState = {
   contactInfo: null,
   useTranslation: true,
   warningModal: null,
+  hasAiCallNumber: null, // null=loading, true=ok, false=missing
+  hasVoiceClone: null,
 };
 let targetLang = localStorage.getItem('aicall-target-lang') || 'EN';
 let ringtoneCtx = null;
@@ -51,6 +53,45 @@ function backendAvailable() {
   return !!import.meta.env.VITE_API_URL;
 }
 
+function renderSetupChecklist() {
+  // Doar daca state e populat si lipseste ceva
+  if (callState.hasAiCallNumber === null) return ''; // inca loading
+  const items = [];
+  if (callState.hasAiCallNumber === false) {
+    items.push({
+      icon: '📞',
+      title: 'Cumpără un număr AiCall',
+      desc: 'Pentru a primi apeluri și a apărea ca tine la celălalt când suni.',
+      action: 'profile',
+      actionLabel: 'Mergi la Profil',
+    });
+  }
+  if (callState.hasVoiceClone === false && callState.useTranslation) {
+    items.push({
+      icon: '🎙️',
+      title: 'Clonează-ți vocea',
+      desc: 'Fără voce clonată, traducerea va folosi o voce default (nu vocea ta).',
+      action: 'voice',
+      actionLabel: 'Mergi la Vocea Mea',
+    });
+  }
+  if (!items.length) return '';
+  return `
+    <div class="setup-checklist">
+      <h4>Pentru a folosi AiCall complet</h4>
+      ${items.map(it => `
+        <div class="setup-item">
+          <span class="setup-icon">${it.icon}</span>
+          <div class="setup-body">
+            <strong>${it.title}</strong>
+            <p>${it.desc}</p>
+          </div>
+          <button class="btn-small btn-accent setup-action" data-target="${it.action}">${it.actionLabel}</button>
+        </div>
+      `).join('')}
+    </div>`;
+}
+
 function renderCreditBar() {
   const c = getCachedCredit();
   if (!c) return '';
@@ -70,6 +111,7 @@ function renderDialpad() {
   return `
   <div class="call-page">
     ${renderCreditBar()}
+    ${renderSetupChecklist()}
 
     <div class="lang-selector">
       <label class="lang-label">Limba de traducere:</label>
@@ -257,10 +299,40 @@ export function mountCall() {
     fetchCredit();
   }
 
+  // Fetch setup status (numar AiCall + voce clonata) - one-shot la primul mount
+  if (callState.hasAiCallNumber === null && backendAvailable()) {
+    Promise.all([
+      api.get('/api/twilio/numbers/mine').catch(() => ({ number: null })),
+      api.get('/api/voice/info').catch(() => ({ has_voice: false })),
+    ]).then(([numRes, voiceRes]) => {
+      callState.hasAiCallNumber = !!numRes?.number;
+      callState.hasVoiceClone = !!voiceRes?.has_voice;
+      // Re-render daca afisam setup checklist
+      if (callState.status === 'idle') {
+        const content = document.getElementById('content');
+        if (content) {
+          content.innerHTML = renderDialpad();
+          mountCall();
+        }
+      }
+    });
+  }
+
   // Init Twilio Device in background (no-op daca lipseste backend)
   if (backendAvailable()) {
-    twilioVoice.setupDevice().catch(() => {});
+    twilioVoice.setupDevice().catch((e) => {
+      console.warn('Twilio Device setup failed:', e);
+    });
   }
+
+  // Setup checklist navigation - click pe tab-ul corespunzator
+  document.querySelectorAll('.setup-action').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const target = btn.dataset.target;
+      const tab = document.querySelector(`.tab[data-tab="${target}"]`);
+      if (tab) tab.click();
+    });
+  });
 
   if (callState.status === 'idle') {
     document.querySelectorAll('.lang-chip').forEach(chip => {
@@ -516,19 +588,33 @@ async function startCall() {
 
       return;
     } catch (e) {
-      console.error('Real call setup failed, falling back to simulation:', e);
+      console.error('Real call setup failed:', e);
       stopRingtone();
-      const msg = e.body?.error || e.message || 'eroare';
-      if (e.status === 402) {
-        alert('Credit insuficient: ' + msg);
-        callState.status = 'idle';
-        const c = document.getElementById('content');
+      const msg = e.message || 'eroare';
+      // Map common errors to user-friendly Romanian messages
+      let friendly = msg;
+      if (msg.includes('402') || msg.includes('Credit')) {
+        friendly = 'Credit insuficient. Reincarca-ti contul.';
+      } else if (msg.includes('Trial') || msg.includes('verified')) {
+        friendly = 'Twilio Trial: poti suna doar numere verificate.\n\nMergi pe console.twilio.com -> Phone Numbers -> Verified Caller IDs si adauga numarul.\n\nSau upgradeaza contul Twilio.';
+      } else if (msg.includes('Device')) {
+        friendly = 'Conectarea la Twilio a eșuat. Verifica conexiunea internet si permisiunea pentru microfon.';
+      } else if (msg.includes('Network') || msg.includes('fetch')) {
+        friendly = 'Nu putem ajunge la backend. Verifica conexiunea internet sau reincearca.';
+      }
+      alert('Apel eșuat: ' + friendly);
+      callState.status = 'idle';
+      callState.duration = 0;
+      const c = document.getElementById('content');
+      if (c) {
         c.innerHTML = renderDialpad();
         mountCall();
-        return;
       }
-      // Backend up dar Twilio not configured -> fall back to simulation pt UX testing
+      return;
     }
+  } else {
+    // Backend not configured - log si fallback la simulare pt dev local
+    console.warn('VITE_API_URL not set - using simulation');
   }
 
   // Simulation fallback (no backend / Twilio not configured)

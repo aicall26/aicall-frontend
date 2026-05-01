@@ -699,6 +699,80 @@ input { font-family: inherit; color: var(--text-primary); }
 .translation-badge.off { background: var(--bg-input); color: var(--text-muted); }
 .translation-badge.off .badge-dot { background: var(--text-muted); }
 
+/* ── Setup checklist on call page ── */
+.setup-checklist {
+  margin: 0 16px 12px;
+  padding: 12px 14px;
+  background: rgba(108, 99, 255, 0.08);
+  border: 1px solid rgba(108, 99, 255, 0.30);
+  border-radius: var(--radius-sm);
+}
+.setup-checklist h4 {
+  font-size: 13px; font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 10px;
+}
+.setup-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 0;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+.setup-item:last-child { border-bottom: none; }
+.setup-icon { font-size: 22px; flex-shrink: 0; }
+.setup-body { flex: 1; min-width: 0; }
+.setup-body strong { font-size: 13px; color: var(--text-primary); display: block; }
+.setup-body p { font-size: 12px; color: var(--text-secondary); margin-top: 2px; line-height: 1.4; }
+.setup-action { flex-shrink: 0; padding: 6px 10px; font-size: 12px; }
+
+/* ── Voice clone test in multiple languages ── */
+.audio-preview {
+  width: 100%;
+  margin-top: 16px;
+  border-radius: var(--radius-sm);
+}
+.preview-actions {
+  display: flex; gap: 10px; justify-content: center;
+  margin-top: 16px;
+}
+.lang-test-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 8px;
+  margin-top: 12px;
+}
+.lang-test-btn {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 4px; padding: 12px 8px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer; transition: all 0.15s;
+  position: relative;
+}
+.lang-test-btn:hover { background: var(--bg-card); border-color: var(--accent); }
+.lang-test-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.lang-test-btn.loading { background: rgba(108, 99, 255, 0.10); border-color: var(--accent); }
+.lang-flag { font-size: 24px; line-height: 1; }
+.lang-name { font-size: 12px; color: var(--text-secondary); font-weight: 500; }
+.lang-spinner {
+  position: absolute; top: 4px; right: 4px;
+  width: 12px; height: 12px;
+  border: 2px solid var(--accent);
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+.recording-tip {
+  margin-top: 8px;
+  padding: 10px 12px;
+  background: rgba(245, 158, 11, 0.08);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
 /* ── Phone number self-service (in profile) ── */
 .phone-help {
   font-size: 13px; color: var(--text-secondary); margin: 4px 0 12px;
