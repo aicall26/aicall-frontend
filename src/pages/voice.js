@@ -128,7 +128,8 @@ export function renderVoice() {
           <path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>
         </svg>
         <h2>Vocea ta este pregătită!</h2>
-        <p>Apasă pe o limbă mai jos ca să auzi cum suni în alte limbi.</p>
+        <p>✓ Salvată automat. <strong>Vocea ta va fi folosită la fiecare apel cu traducere</strong> - interlocutorul va auzi vocea ta în limba lui, nu o voce robot.</p>
+        <p style="margin-top:6px;font-size:12px;color:var(--text-muted)">Voice ID: <code>${state.voiceId || ''}</code></p>
       </div>
 
       <div class="profile-card">

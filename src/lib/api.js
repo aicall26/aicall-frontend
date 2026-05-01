@@ -56,7 +56,9 @@ async function request(path, options = {}) {
     }
     const friendlyMsg = detail || `HTTP ${res.status}`;
     if (res.status === 401) {
-      throw new ApiError('Sesiunea ta a expirat. Te rog deconecteaza-te si reconecteaza-te.', 401, body);
+      // Auto-logout: stergere sesiune locala -> redirect la login
+      try { await supabase.auth.signOut(); } catch {}
+      throw new ApiError('Sesiunea a expirat. Te-am deconectat - autentifica-te din nou.', 401, body);
     }
     if (res.status === 402) {
       throw new ApiError(friendlyMsg, 402, body);
