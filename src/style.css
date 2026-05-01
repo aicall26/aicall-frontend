@@ -635,21 +635,39 @@ input { font-family: inherit; color: var(--text-primary); }
 .sidebar { display: none; }
 .header-page-title { display: none; }
 
+/* Pe tablet/desktop mediu (768-1023px), pastrez layout mobile centred dar
+   adaug background ca sa nu fie ecranul gol */
+@media (min-width: 768px) and (max-width: 1023px) {
+  body {
+    background: linear-gradient(135deg, #0a0a14 0%, #1a1a36 100%);
+  }
+  [data-theme="light"] body {
+    background: linear-gradient(135deg, #eef2ff 0%, #ddd6fe 100%);
+  }
+  #app {
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.35);
+    border-left: 1px solid var(--border);
+    border-right: 1px solid var(--border);
+  }
+}
+
 /* ============================================================
    DESKTOP LAYOUT (≥1024px) - sidebar stanga + header sus + content
    ============================================================ */
 @media (min-width: 1024px) {
-  body {
+  html, body {
     background: var(--bg-primary);
-    overflow: auto;
+    overflow: hidden;
+    height: 100vh;
+    height: 100dvh;
   }
 
   #app {
-    max-width: none;
-    width: 100%;
+    max-width: none !important;
+    width: 100vw !important;
     height: 100vh;
     height: 100dvh;
-    margin: 0;
+    margin: 0 !important;
     display: grid;
     grid-template-columns: 260px 1fr;
     grid-template-rows: 64px 1fr;
