@@ -311,13 +311,20 @@ export async function mountProfile() {
     phoneSection.searching = true;
     phoneSection.searchError = null;
     phoneSection.buyError = null;
+    phoneSection.searchResults = null;
     rerender();
     try {
+      console.log(`[AiCall] Cautare numere: country=${phoneSection.searchCountry}, type=${phoneSection.searchType}`);
       const res = await api.get(`/api/twilio/numbers/search?country=${phoneSection.searchCountry}&type=${phoneSection.searchType}&limit=10`);
+      console.log('[AiCall] Rezultate primite:', res);
       phoneSection.searchResults = res.numbers || [];
+      if (phoneSection.searchResults.length === 0) {
+        phoneSection.searchError = 'Twilio nu are numere disponibile pentru aceasta combinatie. Incearca alta tara sau alt tip.';
+      }
     } catch (e) {
-      phoneSection.searchError = 'Căutarea a eșuat. Verifică dacă backend-ul este pornit. (' + (e.message || 'eroare') + ')';
-      phoneSection.searchResults = null;
+      console.error('[AiCall] Cautare esuata:', e);
+      phoneSection.searchError = 'Cautarea a esuat: ' + (e.message || 'eroare necunoscuta');
+      if (e.status === 503) phoneSection.searchError += '\n(Twilio nu e configurat pe backend - contacteaza administratorul)';
     } finally {
       phoneSection.searching = false;
       rerender();

@@ -220,31 +220,43 @@ function rerender() {
 
 export async function mountVoice() {
   if (state.status === 'loading') {
-    try {
-      // Cer info din backend (mai sigur decat sa citesc din Supabase direct)
-      let info = null;
+    // Timeout total 5 secunde - daca nu raspunde nimic, sare la 'idle'
+    const loadPromise = (async () => {
       try {
-        info = await api.get('/api/voice/info');
-      } catch {}
-      if (info?.has_voice) {
-        state.voiceId = info.voice_id;
-        state.status = 'ready';
-      } else {
-        // Fallback: citesc din Supabase direct
-        const { data: { user } } = await supabase.auth.getUser();
-        if (user) {
-          const { data } = await supabase.from('users').select('voice_id').eq('id', user.id).maybeSingle();
-          if (data?.voice_id) {
-            state.voiceId = data.voice_id;
-            state.status = 'ready';
-          } else {
-            state.status = 'idle';
-          }
+        const info = await api.get('/api/voice/info', { timeout: 5000 });
+        console.log('[AiCall] Voice info:', info);
+        if (info?.has_voice) {
+          state.voiceId = info.voice_id;
+          state.status = 'ready';
         } else {
           state.status = 'idle';
         }
+      } catch (e) {
+        console.warn('[AiCall] Voice info via API failed, trying Supabase direct:', e.message);
+        try {
+          const { data: { user } } = await supabase.auth.getUser();
+          if (user) {
+            const { data } = await supabase.from('users').select('voice_id').eq('id', user.id).maybeSingle();
+            if (data?.voice_id) {
+              state.voiceId = data.voice_id;
+              state.status = 'ready';
+            } else {
+              state.status = 'idle';
+            }
+          } else {
+            state.status = 'idle';
+          }
+        } catch {
+          state.status = 'idle';
+        }
       }
-    } catch {
+    })();
+
+    // Hard timeout: dupa 6s sare la 'idle' indiferent
+    const hardTimeout = new Promise(r => setTimeout(() => r('timeout'), 6000));
+    await Promise.race([loadPromise, hardTimeout]);
+    if (state.status === 'loading') {
+      console.warn('[AiCall] Voice info hard timeout, falling back to idle');
       state.status = 'idle';
     }
     rerender();
