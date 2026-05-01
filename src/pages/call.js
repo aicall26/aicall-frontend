@@ -87,8 +87,10 @@ function renderSetupChecklist() {
           <div class="setup-card">
             <div class="setup-card-icon">${it.icon}</div>
             <div class="setup-card-body">
-              <h4>${it.title}</h4>
-              <p>${it.desc}</p>
+              <div class="setup-card-info">
+                <h4>${it.title}</h4>
+                <span class="setup-desc">${it.desc}</span>
+              </div>
               <button class="btn-primary setup-action" data-target="${it.action}">${it.actionLabel}</button>
             </div>
           </div>
@@ -304,16 +306,20 @@ export function mountCall() {
     fetchCredit();
   }
 
-  // Fetch setup status (numar AiCall + voce clonata) - one-shot la primul mount
-  if (callState.hasAiCallNumber === null && backendAvailable()) {
+  // Fetch setup status (numar AiCall + voce clonata) la fiecare mount din state idle
+  // ca sa prinda schimbari (dupa cumparare numar / clonare voce)
+  if (callState.status === 'idle' && backendAvailable()) {
     Promise.all([
       api.get('/api/twilio/numbers/mine').catch(() => ({ number: null })),
       api.get('/api/voice/info').catch(() => ({ has_voice: false })),
     ]).then(([numRes, voiceRes]) => {
+      const hadNumber = callState.hasAiCallNumber;
+      const hadVoice = callState.hasVoiceClone;
       callState.hasAiCallNumber = !!numRes?.number;
       callState.hasVoiceClone = !!voiceRes?.has_voice;
-      // Re-render daca afisam setup checklist
-      if (callState.status === 'idle') {
+      // Re-render doar daca ceva s-a schimbat (sa nu refacem la fiecare ms)
+      if (callState.status === 'idle' &&
+          (hadNumber !== callState.hasAiCallNumber || hadVoice !== callState.hasVoiceClone)) {
         const content = document.getElementById('content');
         if (content) {
           content.innerHTML = renderDialpad();

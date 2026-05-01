@@ -58,8 +58,39 @@ async function processEmailConfirmation() {
   return false;
 }
 
+function decodeJwt(token) {
+  try {
+    const part = token.split('.')[1];
+    const padded = part + '='.repeat((4 - part.length % 4) % 4);
+    const json = atob(padded.replace(/-/g, '+').replace(/_/g, '/'));
+    return JSON.parse(json);
+  } catch {
+    return null;
+  }
+}
+
+async function ensureCorrectSupabaseToken() {
+  // Daca user-ul are token in localStorage de la alt Supabase project (vechi),
+  // il deconectam ca sa se reloghezeze pe proiectul nou.
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session?.access_token) return false;
+
+  const url = import.meta.env.VITE_SUPABASE_URL || '';
+  if (!url) return true;
+
+  const expectedIss = url.replace(/\/$/, '') + '/auth/v1';
+  const payload = decodeJwt(session.access_token);
+  if (payload && payload.iss && payload.iss !== expectedIss) {
+    console.warn('[AiCall] Token de la alt Supabase project detectat, fac logout. Token iss:', payload.iss, 'expected:', expectedIss);
+    try { await supabase.auth.signOut(); } catch {}
+    return false;
+  }
+  return true;
+}
+
 async function init() {
   await processEmailConfirmation();
+  await ensureCorrectSupabaseToken();
 
   const { data: { session } } = await supabase.auth.getSession();
 

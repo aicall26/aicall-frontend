@@ -971,73 +971,81 @@ input { font-family: inherit; color: var(--text-primary); }
 .translation-badge.off { background: var(--bg-input); color: var(--text-muted); }
 .translation-badge.off .badge-dot { background: var(--text-muted); }
 
-/* ── Setup checklist (welcome banner pe pagina Suna) ── */
+/* ── Setup checklist (carduri mici, centrate pe pagina Suna) ── */
 .setup-checklist-wrap {
   display: flex;
   justify-content: center;
-  padding: 24px 16px;
+  padding: 12px 16px 4px;
 }
 .setup-checklist {
   width: 100%;
-  max-width: 460px;
+  max-width: 420px;
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 8px;
 }
-.setup-checklist-head { text-align: center; margin-bottom: 6px; }
+.setup-checklist-head { text-align: center; margin-bottom: 2px; }
 .setup-checklist-head h3 {
-  font-size: 22px;
-  font-weight: 700;
-  margin-bottom: 6px;
+  font-size: 16px;
+  font-weight: 600;
+  margin-bottom: 2px;
   background: var(--gradient);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
 }
 .setup-checklist-head p {
-  font-size: 14px;
-  color: var(--text-secondary);
+  font-size: 12px;
+  color: var(--text-muted);
 }
 .setup-card {
   display: flex;
-  gap: 14px;
-  padding: 18px 18px;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
   background: var(--bg-card);
   border: 1px solid var(--border);
-  border-radius: var(--radius);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18);
+  border-radius: var(--radius-sm);
   transition: transform 0.15s, border-color 0.15s;
 }
-.setup-card:hover { transform: translateY(-1px); border-color: var(--accent); }
+.setup-card:hover { border-color: var(--accent); }
 .setup-card-icon {
-  font-size: 32px;
+  font-size: 20px;
   flex-shrink: 0;
-  width: 56px; height: 56px;
+  width: 36px; height: 36px;
   display: flex; align-items: center; justify-content: center;
-  background: rgba(108, 99, 255, 0.12);
-  border-radius: var(--radius);
+  background: rgba(108, 99, 255, 0.10);
+  border-radius: var(--radius-sm);
 }
-.setup-card-body { flex: 1; min-width: 0; }
+.setup-card-body { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; }
 .setup-card-body h4 {
-  font-size: 15px;
-  font-weight: 600;
-  margin-bottom: 6px;
-  color: var(--text-primary);
-}
-.setup-card-body p {
   font-size: 13px;
-  color: var(--text-secondary);
-  line-height: 1.5;
-  margin-bottom: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 0;
 }
+.setup-card-body p { display: none; }
 .setup-card-body .btn-primary {
-  width: 100%;
-  padding: 10px;
-  font-size: 14px;
+  width: auto;
+  padding: 6px 12px;
+  font-size: 12px;
   font-weight: 600;
   border-radius: var(--radius-sm);
   background: var(--gradient);
   color: white;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+.setup-card-info {
+  flex: 1;
+  min-width: 0;
+}
+.setup-card-info .setup-desc {
+  display: block;
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 1px;
+  line-height: 1.3;
 }
 
 /* Modal special pt cumparare numar (mai mare) */
