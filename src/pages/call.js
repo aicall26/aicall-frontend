@@ -1,11 +1,26 @@
 import { supabase } from '../lib/supabase.js';
 import { api } from '../lib/api.js';
+import * as twilioVoice from '../lib/twilioVoice.js';
+import { startBilling, stopBilling } from '../lib/billingTick.js';
+import { fetchCredit, getCachedCredit, formatCredit, formatMinutes, onCreditChange } from '../lib/credit.js';
 
-let callState = { status: 'idle', number: '', duration: 0, timer: null, muted: false, speaker: false, countdown: 3 };
+let callState = {
+  status: 'idle',
+  number: '',
+  duration: 0,
+  timer: null,
+  muted: false,
+  speaker: false,
+  countdown: 3,
+  contactInfo: null,
+  useTranslation: true,
+  warningModal: null,
+};
 let targetLang = localStorage.getItem('aicall-target-lang') || 'EN';
 let ringtoneCtx = null;
 let ringtoneOsc = null;
 let ringtoneTimeout = null;
+let unsubCreditListener = null;
 
 const LANGUAGES = [
   { code: 'RO', label: 'Română' },
@@ -32,9 +47,30 @@ function sanitizePhone(val) {
   return val.replace(/[^0-9+*#]/g, '');
 }
 
+function backendAvailable() {
+  return !!import.meta.env.VITE_API_URL;
+}
+
+function renderCreditBar() {
+  const c = getCachedCredit();
+  if (!c) return '';
+  const low = c.credit_cents <= 120;
+  const veryLow = c.credit_cents <= 40;
+  const cls = veryLow ? 'credit-bar very-low' : (low ? 'credit-bar low' : 'credit-bar');
+  return `
+    <div class="${cls}">
+      <span class="credit-label">Credit</span>
+      <span class="credit-amount">${formatCredit(c)}</span>
+      <span class="credit-minutes">≈ ${formatMinutes(c, true)} cu traducere</span>
+    </div>`;
+}
+
 function renderDialpad() {
+  const useTr = callState.useTranslation;
   return `
   <div class="call-page">
+    ${renderCreditBar()}
+
     <div class="lang-selector">
       <label class="lang-label">Limba de traducere:</label>
       <div class="lang-options">
@@ -42,6 +78,14 @@ function renderDialpad() {
           <button class="lang-chip ${l.code === targetLang ? 'active' : ''}" data-lang="${l.code}">${l.code}</button>
         `).join('')}
       </div>
+    </div>
+
+    <div class="translation-toggle-row">
+      <label class="toggle-switch">
+        <input type="checkbox" id="useTranslationToggle" ${useTr ? 'checked' : ''} />
+        <span class="toggle-slider"></span>
+        <span class="toggle-text">${useTr ? 'Cu traducere' : 'Fără traducere'}</span>
+      </label>
     </div>
 
     <div class="phone-type-area">
@@ -54,6 +98,12 @@ function renderDialpad() {
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 4H8l-7 8 7 8h13a2 2 0 002-2V6a2 2 0 00-2-2z"/><line x1="18" y1="9" x2="12" y2="15"/><line x1="12" y1="9" x2="18" y2="15"/></svg>
       </button>` : ''}
     </div>
+
+    ${callState.contactInfo ? `
+    <div class="contact-hint ${callState.contactInfo.suggested_mode}">
+      <span class="contact-name">${callState.contactInfo.contact.name}</span>
+      <span class="contact-mode">${callState.contactInfo.suggested_mode === 'never' ? '· Vorbiți aceeași limbă' : callState.contactInfo.suggested_mode === 'always' ? `· Cu traducere → ${callState.contactInfo.contact.preferred_language || 'auto'}` : '· Decide la apel'}</span>
+    </div>` : ''}
 
     <div class="dialpad">
       ${dialpadKeys.map(row => `<div class="dialpad-row">
@@ -75,6 +125,8 @@ function renderDialpad() {
 function renderActiveCall() {
   return `
   <div class="active-call">
+    ${renderCreditBar()}
+
     <div class="pulse-container">
       <div class="pulse-ring r1"></div>
       <div class="pulse-ring r2"></div>
@@ -84,7 +136,8 @@ function renderActiveCall() {
       </div>
     </div>
 
-    <div class="call-number">${callState.number || 'Număr necunoscut'}</div>
+    <div class="call-number">${callState.contactInfo?.contact?.name || callState.number || 'Număr necunoscut'}</div>
+    ${callState.contactInfo ? `<div class="call-number-sub">${callState.number}</div>` : ''}
 
     <div class="call-status">
       ${callState.status === 'connecting' ? 'Se apelează...' : ''}
@@ -95,9 +148,11 @@ function renderActiveCall() {
     ${callState.status === 'countdown' ? `<div class="countdown-label">Conectat! Se pornește traducerea...</div>` : ''}
 
     ${callState.status === 'active' ? `
-    <div class="translation-badge">
+    <div class="translation-badge ${callState.useTranslation ? '' : 'off'}">
       <span class="badge-dot"></span>
-      Traducere activă: ${LANGUAGES.find(l => l.code === targetLang)?.label || targetLang}
+      ${callState.useTranslation
+        ? `Traducere activă: ${LANGUAGES.find(l => l.code === targetLang)?.label || targetLang}`
+        : 'Apel fără traducere'}
     </div>` : ''}
 
     <div class="call-controls">
@@ -125,7 +180,23 @@ function renderActiveCall() {
         <line x1="1" y1="1" x2="23" y2="23"/>
       </svg>
     </button>
+
+    ${callState.warningModal ? renderCreditWarning(callState.warningModal) : ''}
   </div>`;
+}
+
+function renderCreditWarning(kind) {
+  const txt = kind === '15min'
+    ? 'Mai ai aproximativ 15 minute de apel. Îți recomandăm să-ți reîncarci contul ca să nu se întrerupă apelul.'
+    : 'ATENȚIE: Mai ai mai puțin de 5 minute. Apelul se va încheia automat când creditul ajunge la 0.';
+  return `
+    <div class="modal-overlay">
+      <div class="modal-card credit-warning warn-${kind}">
+        <h3>${kind === '15min' ? '⚠️ Credit aproape epuizat' : '🚨 Credit foarte mic'}</h3>
+        <p>${txt}</p>
+        <button class="btn-primary" id="dismissWarningBtn">Am înțeles</button>
+      </div>
+    </div>`;
 }
 
 export function renderCall() {
@@ -142,9 +213,56 @@ function updateDialpadUI() {
   if (callBtn) callBtn.disabled = !callState.number;
 }
 
+async function lookupContact(phone) {
+  if (!backendAvailable()) {
+    callState.contactInfo = null;
+    return;
+  }
+  try {
+    const res = await api.get(`/api/contacts/lookup?phone=${encodeURIComponent(phone)}`);
+    if (res.found) {
+      callState.contactInfo = res;
+      // Auto-set translation toggle dupa mod sugerat
+      if (res.suggested_mode === 'never') callState.useTranslation = false;
+      else if (res.suggested_mode === 'always') callState.useTranslation = true;
+      // Re-render minimal
+      const hint = document.querySelector('.contact-hint');
+      const callPage = document.querySelector('.call-page');
+      if (callPage) {
+        const content = document.getElementById('content');
+        content.innerHTML = renderDialpad();
+        mountCall();
+      }
+    } else {
+      callState.contactInfo = null;
+    }
+  } catch (e) {
+    callState.contactInfo = null;
+  }
+}
+
+let lookupDebounce = null;
+function debouncedLookup(phone) {
+  if (lookupDebounce) clearTimeout(lookupDebounce);
+  lookupDebounce = setTimeout(() => lookupContact(phone), 400);
+}
+
 export function mountCall() {
+  // Subscribe to credit changes (re-render bar on update)
+  if (!unsubCreditListener) {
+    unsubCreditListener = onCreditChange(() => {
+      const bar = document.querySelector('.credit-bar');
+      if (bar) bar.outerHTML = renderCreditBar();
+    });
+    fetchCredit();
+  }
+
+  // Init Twilio Device in background (no-op daca lipseste backend)
+  if (backendAvailable()) {
+    twilioVoice.setupDevice().catch(() => {});
+  }
+
   if (callState.status === 'idle') {
-    // Language selector
     document.querySelectorAll('.lang-chip').forEach(chip => {
       chip.addEventListener('click', () => {
         targetLang = chip.dataset.lang;
@@ -153,19 +271,23 @@ export function mountCall() {
       });
     });
 
-    // Typeable/pasteable phone input
+    document.getElementById('useTranslationToggle')?.addEventListener('change', (e) => {
+      callState.useTranslation = e.target.checked;
+      const txt = e.target.parentElement.querySelector('.toggle-text');
+      if (txt) txt.textContent = e.target.checked ? 'Cu traducere' : 'Fără traducere';
+    });
+
     const typeableInput = document.getElementById('phoneTypeable');
     if (typeableInput) {
       typeableInput.addEventListener('input', () => {
         callState.number = sanitizePhone(typeableInput.value);
         typeableInput.value = callState.number;
         updateDialpadUI();
-        // Show delete button if number just appeared
+        if (callState.number.length >= 4) debouncedLookup(callState.number);
         if (callState.number.length === 1 || callState.number.length === 0) {
           const content = document.getElementById('content');
           content.innerHTML = renderDialpad();
           mountCall();
-          // Re-focus the input and place cursor at end
           const newInput = document.getElementById('phoneTypeable');
           if (newInput) {
             newInput.focus();
@@ -180,7 +302,7 @@ export function mountCall() {
         callState.number = sanitizePhone(pasted);
         typeableInput.value = callState.number;
         updateDialpadUI();
-        // Re-render to show delete button
+        debouncedLookup(callState.number);
         const content = document.getElementById('content');
         content.innerHTML = renderDialpad();
         mountCall();
@@ -192,13 +314,13 @@ export function mountCall() {
       });
     }
 
-    // Dialpad keys
     document.querySelectorAll('.dialpad-key').forEach(key => {
       key.addEventListener('click', () => {
         callState.number += key.dataset.key;
         const typeInput = document.getElementById('phoneTypeable');
         if (typeInput) typeInput.value = callState.number;
         updateDialpadUI();
+        if (callState.number.length >= 4) debouncedLookup(callState.number);
         if (callState.number.length === 1) {
           const content = document.getElementById('content');
           content.innerHTML = renderDialpad();
@@ -213,9 +335,12 @@ export function mountCall() {
       if (typeInput) typeInput.value = callState.number;
       updateDialpadUI();
       if (!callState.number) {
+        callState.contactInfo = null;
         const content = document.getElementById('content');
         content.innerHTML = renderDialpad();
         mountCall();
+      } else if (callState.number.length >= 4) {
+        debouncedLookup(callState.number);
       }
     });
 
@@ -226,6 +351,7 @@ export function mountCall() {
   } else {
     document.getElementById('muteBtn')?.addEventListener('click', () => {
       callState.muted = !callState.muted;
+      twilioVoice.muteCall(callState.muted);
       const content = document.getElementById('content');
       content.innerHTML = renderActiveCall();
       mountCall();
@@ -240,6 +366,13 @@ export function mountCall() {
 
     document.getElementById('hangupBtn')?.addEventListener('click', () => {
       endCall();
+    });
+
+    document.getElementById('dismissWarningBtn')?.addEventListener('click', () => {
+      callState.warningModal = null;
+      const content = document.getElementById('content');
+      content.innerHTML = renderActiveCall();
+      mountCall();
     });
   }
 }
@@ -276,29 +409,136 @@ function stopRingtone() {
   } catch (e) {}
 }
 
+function playWarningBeep() {
+  // Beep audibil doar pe partea fratelui (nu intra in apel - foloseste alt context audio)
+  try {
+    const ctx = new AudioContext();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.value = 880;
+    gain.gain.value = 0.2;
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start();
+    gain.gain.setValueAtTime(0.2, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.4);
+    osc.stop(ctx.currentTime + 0.4);
+    setTimeout(() => ctx.close(), 500);
+  } catch {}
+}
+
 async function startCall() {
+  if (!callState.number) return;
+
   callState.status = 'connecting';
+  callState.duration = 0;
+  callState.warningModal = null;
   const content = document.getElementById('content');
   content.innerHTML = renderActiveCall();
   mountCall();
 
   startRingtone();
 
-  if (import.meta.env.VITE_API_URL) {
+  // Try real Twilio Voice SDK first; fall back to simulation if backend not ready
+  if (backendAvailable()) {
     try {
-      await api.post('/api/calls/start', {
-        to: callState.number,
-        target_language: targetLang,
+      // Pas 1: validare cu /api/calls/start (verifica credit + creeaza sesiune)
+      const session = await api.post('/api/calls/start', {
+        phone_number: callState.number,
+        direction: 'outbound',
+        use_translation: callState.useTranslation,
       });
-    } catch (e) {}
+
+      // Pas 2: setup device (idempotent)
+      const device = await twilioVoice.setupDevice();
+      if (!device) throw new Error('Device unavailable');
+
+      // Pas 3: apel real
+      const call = await twilioVoice.makeCall(callState.number, {
+        SessionId: session.session_id,
+      });
+
+      call.on('accept', () => {
+        stopRingtone();
+        callState.status = 'countdown';
+        callState.countdown = 3;
+        const c = document.getElementById('content');
+        c.innerHTML = renderActiveCall();
+        mountCall();
+
+        const countdownInterval = setInterval(() => {
+          callState.countdown--;
+          const statusEl = document.querySelector('.countdown-num');
+          if (statusEl) statusEl.textContent = callState.countdown;
+          if (callState.countdown <= 0) {
+            clearInterval(countdownInterval);
+            callState.status = 'active';
+            callState.timer = setInterval(() => {
+              callState.duration++;
+              const el = document.querySelector('.call-status');
+              if (el) el.textContent = formatDuration(callState.duration);
+            }, 1000);
+            const c2 = document.getElementById('content');
+            c2.innerHTML = renderActiveCall();
+            mountCall();
+
+            // Pornesc billing tick
+            startBilling(session.session_id, {
+              onWarning15: () => {
+                playWarningBeep();
+                callState.warningModal = '15min';
+                const cw = document.getElementById('content');
+                cw.innerHTML = renderActiveCall();
+                mountCall();
+              },
+              onWarning5: () => {
+                playWarningBeep();
+                playWarningBeep();
+                callState.warningModal = '5min';
+                const cw = document.getElementById('content');
+                cw.innerHTML = renderActiveCall();
+                mountCall();
+              },
+              onMustEnd: () => endCall(),
+            });
+          }
+        }, 1000);
+      });
+
+      call.on('disconnect', () => endCall());
+      call.on('cancel', () => endCall());
+      call.on('error', (err) => {
+        console.error('Call error:', err);
+        alert('Apelul a eșuat: ' + (err.message || 'eroare necunoscută'));
+        endCall();
+      });
+
+      return;
+    } catch (e) {
+      console.error('Real call setup failed, falling back to simulation:', e);
+      stopRingtone();
+      const msg = e.body?.error || e.message || 'eroare';
+      if (e.status === 402) {
+        alert('Credit insuficient: ' + msg);
+        callState.status = 'idle';
+        const c = document.getElementById('content');
+        c.innerHTML = renderDialpad();
+        mountCall();
+        return;
+      }
+      // Backend up dar Twilio not configured -> fall back to simulation pt UX testing
+    }
   }
 
+  // Simulation fallback (no backend / Twilio not configured)
   setTimeout(() => {
     if (callState.status !== 'connecting') return;
     stopRingtone();
     callState.status = 'countdown';
     callState.countdown = 3;
-    content.innerHTML = renderActiveCall();
+    const c = document.getElementById('content');
+    c.innerHTML = renderActiveCall();
     mountCall();
 
     const countdownInterval = setInterval(() => {
@@ -308,13 +548,13 @@ async function startCall() {
       if (callState.countdown <= 0) {
         clearInterval(countdownInterval);
         callState.status = 'active';
-        callState.duration = 0;
         callState.timer = setInterval(() => {
           callState.duration++;
           const el = document.querySelector('.call-status');
           if (el) el.textContent = formatDuration(callState.duration);
         }, 1000);
-        content.innerHTML = renderActiveCall();
+        const c2 = document.getElementById('content');
+        c2.innerHTML = renderActiveCall();
         mountCall();
       }
     }, 1000);
@@ -325,27 +565,44 @@ async function endCall() {
   stopRingtone();
   if (callState.timer) clearInterval(callState.timer);
 
-  try {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (user && callState.duration > 0) {
-      await supabase.from('call_history').insert({
-        user_id: user.id,
-        phone_number: callState.number,
-        direction: 'outbound',
-        duration: callState.duration,
-        detected_language: targetLang,
-      });
-    }
-  } catch (e) {}
+  twilioVoice.hangup();
+  stopBilling(callState.duration % 15);
 
-  if (import.meta.env.VITE_API_URL) {
-    try { await api.post('/api/calls/end'); } catch (e) {}
+  // Best-effort save in call_history daca nu folosim backend
+  if (!backendAvailable()) {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user && callState.duration > 0) {
+        await supabase.from('call_history').insert({
+          user_id: user.id,
+          phone_number: callState.number,
+          direction: 'outbound',
+          duration_seconds: callState.duration,
+          detected_language: targetLang,
+          used_translation: callState.useTranslation,
+        });
+      }
+    } catch (e) {}
   }
 
-  callState = { status: 'idle', number: '', duration: 0, timer: null, muted: false, speaker: false, countdown: 3 };
+  callState = {
+    status: 'idle',
+    number: '',
+    duration: 0,
+    timer: null,
+    muted: false,
+    speaker: false,
+    countdown: 3,
+    contactInfo: null,
+    useTranslation: callState.useTranslation, // pastram preferinta
+    warningModal: null,
+  };
   const content = document.getElementById('content');
   content.innerHTML = renderDialpad();
   mountCall();
+
+  // Refresh credit dupa apel
+  fetchCredit();
 }
 
 export function triggerCall(number) {

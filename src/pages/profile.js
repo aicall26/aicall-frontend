@@ -1,10 +1,39 @@
 import { supabase } from '../lib/supabase.js';
+import { api } from '../lib/api.js';
+import { fetchCredit } from '../lib/credit.js';
 
 let user = null;
 let profile = null;
 let editing = false;
 let changingPassword = false;
 let passwordMsg = null;
+
+// Phone number self-service state
+let aicallNumber = null;
+let phoneSection = {
+  searching: false,
+  searchResults: null,
+  searchError: null,
+  searchCountry: 'GB',
+  searchType: 'local',
+  buying: false,
+  buyError: null,
+  showBuyDialog: false,
+};
+
+const COUNTRY_OPTIONS = [
+  { code: 'GB', label: 'Marea Britanie (UK)' },
+  { code: 'US', label: 'Statele Unite (US)' },
+  { code: 'DE', label: 'Germania (DE)' },
+  { code: 'FR', label: 'Franta (FR)' },
+  { code: 'RO', label: 'Romania (RO)' },
+];
+
+const TYPE_OPTIONS = [
+  { code: 'local', label: 'Local (fix)' },
+  { code: 'mobile', label: 'Mobil' },
+  { code: 'tollfree', label: 'Toll-free' },
+];
 
 export function renderProfile() {
   if (!profile) {
@@ -35,7 +64,7 @@ export function renderProfile() {
       </div>
 
       <div class="profile-field">
-        <label>Telefon</label>
+        <label>Telefon personal</label>
         ${editing
           ? `<input type="tel" id="editPhone" class="form-input" value="${profile.phone_number || ''}" placeholder="+40712345678" />`
           : `<div class="field-value">${profile.phone_number || '—'}${profile.phone_verified ? ' <span class="verified-badge">Verificat</span>' : ''}</div>`}
@@ -55,6 +84,8 @@ export function renderProfile() {
         `}
       </div>
     </div>
+
+    ${renderPhoneNumberCard()}
 
     <div class="profile-card">
       <h3 class="card-title">Schimbă parola</h3>
@@ -100,20 +131,109 @@ export function renderProfile() {
   </div>`;
 }
 
+function renderPhoneNumberCard() {
+  if (aicallNumber) {
+    return `
+    <div class="profile-card">
+      <h3 class="card-title">Numărul tău AiCall</h3>
+      <div class="aicall-number-display">
+        <div class="aicall-number-big">${aicallNumber.twilio_phone_number}</div>
+        <div class="aicall-number-meta">
+          ${aicallNumber.twilio_phone_country} · ${aicallNumber.twilio_phone_type} ·
+          $${(aicallNumber.twilio_phone_monthly_cents / 100).toFixed(2)}/lună
+        </div>
+        ${aicallNumber.twilio_phone_next_charge_at ? `
+        <div class="aicall-number-meta">
+          Următoarea reînnoire: ${new Date(aicallNumber.twilio_phone_next_charge_at).toLocaleDateString('ro-RO')}
+        </div>` : ''}
+      </div>
+      <p class="phone-help">
+        Acesta este numărul tău AiCall. Englezii (sau alți interlocutori) sună aici și ajunge la tine cu traducere.
+        Când suni de pe AiCall, acest număr apare la celălalt.
+      </p>
+      <button class="btn-small btn-danger-outline" id="releaseNumberBtn">
+        Renunță la număr
+      </button>
+    </div>`;
+  }
+
+  return `
+  <div class="profile-card">
+    <h3 class="card-title">Numărul tău AiCall</h3>
+    <p class="phone-help">
+      Ai nevoie de un număr de telefon ca să primești apeluri în AiCall.
+      Costul lunar se scade automat din credit.
+    </p>
+
+    ${phoneSection.searchError ? `<div class="profile-msg error">${phoneSection.searchError}</div>` : ''}
+    ${phoneSection.buyError ? `<div class="profile-msg error">${phoneSection.buyError}</div>` : ''}
+
+    <div class="phone-search-row">
+      <div class="phone-search-field">
+        <label>Țară</label>
+        <select id="searchCountry" class="form-input">
+          ${COUNTRY_OPTIONS.map(c => `<option value="${c.code}" ${c.code === phoneSection.searchCountry ? 'selected' : ''}>${c.label}</option>`).join('')}
+        </select>
+      </div>
+      <div class="phone-search-field">
+        <label>Tip</label>
+        <select id="searchType" class="form-input">
+          ${TYPE_OPTIONS.map(t => `<option value="${t.code}" ${t.code === phoneSection.searchType ? 'selected' : ''}>${t.label}</option>`).join('')}
+        </select>
+      </div>
+    </div>
+
+    <button class="btn-small btn-accent" id="searchNumbersBtn" ${phoneSection.searching ? 'disabled' : ''}>
+      ${phoneSection.searching ? 'Caut numere...' : 'Caută numere disponibile'}
+    </button>
+
+    ${phoneSection.searchResults && phoneSection.searchResults.length > 0 ? `
+      <div class="phone-results-list">
+        ${phoneSection.searchResults.map((n, i) => `
+          <div class="phone-result-row">
+            <div class="phone-result-info">
+              <div class="phone-result-number">${n.phone_number}</div>
+              <div class="phone-result-meta">
+                ${n.locality ? n.locality + ' · ' : ''}${n.country} ${n.type} ·
+                <strong>$${n.monthly_usd}/lună</strong>
+              </div>
+            </div>
+            <button class="btn-small btn-accent buy-number-btn"
+              data-index="${i}"
+              ${phoneSection.buying ? 'disabled' : ''}>
+              ${phoneSection.buying ? '...' : 'Cumpără'}
+            </button>
+          </div>
+        `).join('')}
+      </div>
+    ` : ''}
+
+    ${phoneSection.searchResults && phoneSection.searchResults.length === 0 ? `
+      <div class="profile-msg">Nu s-au găsit numere pentru aceste criterii.</div>
+    ` : ''}
+  </div>`;
+}
+
 export async function mountProfile() {
   if (!profile) {
     const { data: { user: u } } = await supabase.auth.getUser();
     user = u;
     if (user) {
-      const { data } = await supabase.from('users').select('*').eq('id', user.id).single();
+      const { data } = await supabase.from('users').select('*').eq('id', user.id).maybeSingle();
       profile = data || { email: user.email, full_name: user.user_metadata?.full_name || '' };
     }
-    const content = document.getElementById('content');
-    content.innerHTML = renderProfile();
-    mountProfile();
+    // Fetch numarul Twilio (best-effort)
+    try {
+      const r = await api.get('/api/twilio/numbers/mine');
+      aicallNumber = r.number;
+    } catch {
+      aicallNumber = null;
+    }
+    rerender();
     return;
   }
 
+  // Profile edit
   document.getElementById('editProfile')?.addEventListener('click', () => {
     editing = true;
     rerender();
@@ -140,6 +260,84 @@ export async function mountProfile() {
     }
     editing = false;
     rerender();
+  });
+
+  // Phone number self-service
+  document.getElementById('searchCountry')?.addEventListener('change', (e) => {
+    phoneSection.searchCountry = e.target.value;
+  });
+  document.getElementById('searchType')?.addEventListener('change', (e) => {
+    phoneSection.searchType = e.target.value;
+  });
+
+  document.getElementById('searchNumbersBtn')?.addEventListener('click', async () => {
+    phoneSection.searching = true;
+    phoneSection.searchError = null;
+    phoneSection.buyError = null;
+    rerender();
+    try {
+      const res = await api.get(`/api/twilio/numbers/search?country=${phoneSection.searchCountry}&type=${phoneSection.searchType}&limit=10`);
+      phoneSection.searchResults = res.numbers || [];
+    } catch (e) {
+      phoneSection.searchError = 'Căutarea a eșuat. Verifică dacă backend-ul este pornit. (' + (e.message || 'eroare') + ')';
+      phoneSection.searchResults = null;
+    } finally {
+      phoneSection.searching = false;
+      rerender();
+    }
+  });
+
+  document.querySelectorAll('.buy-number-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const idx = parseInt(btn.dataset.index, 10);
+      const number = phoneSection.searchResults?.[idx];
+      if (!number) return;
+
+      const ok = confirm(
+        `Cumperi numărul ${number.phone_number}?\n\n` +
+        `Cost lunar: $${number.monthly_usd}\n` +
+        `Se va scădea acum din credit.`
+      );
+      if (!ok) return;
+
+      phoneSection.buying = true;
+      phoneSection.buyError = null;
+      rerender();
+      try {
+        const result = await api.post('/api/twilio/numbers/buy', {
+          phone_number: number.phone_number,
+          country: number.country,
+          type: number.type,
+        });
+        // Refresh numar + credit
+        const mine = await api.get('/api/twilio/numbers/mine');
+        aicallNumber = mine.number;
+        phoneSection.searchResults = null;
+        await fetchCredit();
+        alert(`Numărul ${result.phone_number} a fost cumpărat cu succes!`);
+      } catch (e) {
+        phoneSection.buyError = e.message || 'Cumpărarea a eșuat.';
+      } finally {
+        phoneSection.buying = false;
+        rerender();
+      }
+    });
+  });
+
+  document.getElementById('releaseNumberBtn')?.addEventListener('click', async () => {
+    const ok = confirm(
+      'Sigur renunți la numărul AiCall?\n\n' +
+      'Twilio NU returnează banii pentru luna curentă.\n' +
+      'Nu vei mai putea primi apeluri pe acest număr.'
+    );
+    if (!ok) return;
+    try {
+      await api.delete('/api/twilio/numbers');
+      aicallNumber = null;
+      rerender();
+    } catch (e) {
+      alert('Eliberarea a eșuat: ' + (e.message || 'eroare'));
+    }
   });
 
   // Change password
@@ -180,7 +378,6 @@ export async function mountProfile() {
     rerender();
   });
 
-  // Password toggle in change password form
   document.getElementById('toggleNewPw')?.addEventListener('click', () => {
     const input = document.getElementById('newPassword');
     const isHidden = input.type === 'password';
@@ -203,12 +400,15 @@ export async function mountProfile() {
     editing = false;
     changingPassword = false;
     passwordMsg = null;
+    aicallNumber = null;
     await supabase.auth.signOut();
   });
 }
 
 function rerender() {
   const content = document.getElementById('content');
-  content.innerHTML = renderProfile();
-  mountProfile();
+  if (content) {
+    content.innerHTML = renderProfile();
+    mountProfile();
+  }
 }
