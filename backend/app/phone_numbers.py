@@ -278,10 +278,13 @@ def add_verified_caller(user_id: str, phone_number: str, friendly_name: Optional
         raise ValueError("Numarul trebuie sa fie in format international: +40712345678")
 
     sb = supabase_admin()
-    user_res = sb.table("users").select("full_name, email").eq("id", user_id).maybe_single().execute()
+    # Folosesc .limit(1).execute() in loc de .maybe_single() pentru ca acesta din urma
+    # arunca exception pe 0 rows pe versiunile noi supabase-py.
+    user_res = sb.table("users").select("full_name, email").eq("id", user_id).limit(1).execute()
     label = friendly_name
-    if not label and user_res and user_res.data:
-        label = user_res.data.get("full_name") or user_res.data.get("email") or "AiCall User"
+    if not label and user_res and user_res.data and len(user_res.data) > 0:
+        first = user_res.data[0]
+        label = first.get("full_name") or first.get("email") or "AiCall User"
     label = (label or "AiCall User")[:64]
 
     client = _twilio_client()
@@ -294,11 +297,13 @@ def add_verified_caller(user_id: str, phone_number: str, friendly_name: Optional
         log.exception(f"Twilio validation request failed for {phone_number}")
         raise RuntimeError(f"Eroare Twilio: {e}")
 
-    # Salvam in DB pending verification
-    sb.table("users").update({
+    # Salvam in DB pending verification - folosim upsert ca sa cream profilul
+    # daca nu exista (in caz ca trigger-ul on_auth_user_created n-a rulat).
+    sb.table("users").upsert({
+        "id": user_id,
         "phone_number": phone_number,
         "phone_verified": False,
-    }).eq("id", user_id).execute()
+    }, on_conflict="id").execute()
 
     return {
         "phone_number": phone_number,
@@ -314,11 +319,11 @@ def check_verified_caller(user_id: str) -> dict:
         raise RuntimeError("Twilio not configured")
 
     sb = supabase_admin()
-    user_res = sb.table("users").select("phone_number, phone_verified").eq("id", user_id).maybe_single().execute()
-    if not user_res or not user_res.data or not user_res.data.get("phone_number"):
+    user_res = sb.table("users").select("phone_number, phone_verified").eq("id", user_id).limit(1).execute()
+    if not user_res or not user_res.data or len(user_res.data) == 0 or not user_res.data[0].get("phone_number"):
         return {"verified": False, "message": "Niciun numar personal asociat"}
 
-    phone = user_res.data["phone_number"]
+    phone = user_res.data[0]["phone_number"]
     client = _twilio_client()
     try:
         verified_list = client.outgoing_caller_ids.list(phone_number=phone, limit=5)
@@ -327,10 +332,12 @@ def check_verified_caller(user_id: str) -> dict:
         raise RuntimeError(f"Eroare Twilio: {e}")
 
     is_verified = any(c.phone_number == phone for c in verified_list)
-    if is_verified and not user_res.data.get("phone_verified"):
-        sb.table("users").update({"phone_verified": True}).eq("id", user_id).execute()
-    elif not is_verified and user_res.data.get("phone_verified"):
-        sb.table("users").update({"phone_verified": False}).eq("id", user_id).execute()
+    current_verified = user_res.data[0].get("phone_verified")
+    if is_verified != bool(current_verified):
+        sb.table("users").upsert({
+            "id": user_id,
+            "phone_verified": is_verified,
+        }, on_conflict="id").execute()
 
     return {
         "verified": is_verified,
@@ -345,11 +352,11 @@ def remove_verified_caller(user_id: str) -> dict:
         raise RuntimeError("Twilio not configured")
 
     sb = supabase_admin()
-    user_res = sb.table("users").select("phone_number").eq("id", user_id).maybe_single().execute()
-    if not user_res or not user_res.data or not user_res.data.get("phone_number"):
+    user_res = sb.table("users").select("phone_number").eq("id", user_id).limit(1).execute()
+    if not user_res or not user_res.data or len(user_res.data) == 0 or not user_res.data[0].get("phone_number"):
         return {"removed": False}
 
-    phone = user_res.data["phone_number"]
+    phone = user_res.data[0]["phone_number"]
     client = _twilio_client()
     try:
         verified_list = client.outgoing_caller_ids.list(phone_number=phone, limit=5)
@@ -361,10 +368,11 @@ def remove_verified_caller(user_id: str) -> dict:
     except Exception as e:
         log.warning(f"Failed to remove caller ID: {e}")
 
-    sb.table("users").update({
+    sb.table("users").upsert({
+        "id": user_id,
         "phone_number": None,
         "phone_verified": False,
-    }).eq("id", user_id).execute()
+    }, on_conflict="id").execute()
 
     return {"removed": True}
 

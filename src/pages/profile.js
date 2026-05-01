@@ -1,6 +1,7 @@
 import { supabase } from '../lib/supabase.js';
 import { api } from '../lib/api.js';
 import { fetchCredit } from '../lib/credit.js';
+import { openVerifyCallerModal } from '../lib/verifyCaller.js';
 
 let user = null;
 let profile = null;
@@ -10,6 +11,7 @@ let passwordMsg = null;
 
 // Phone number self-service state
 let aicallNumber = null;
+let personalVerified = null; // {verified: bool, phone_number: string} | null
 let phoneSection = {
   searching: false,
   searchResults: null,
@@ -110,6 +112,7 @@ export function renderProfile() {
       </div>
     </div>
 
+    ${renderVerifiedCallerCard()}
     ${renderPhoneNumberCard()}
 
     <div class="profile-card">
@@ -153,6 +156,38 @@ export function renderProfile() {
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
       Deconectare
     </button>
+  </div>`;
+}
+
+function renderVerifiedCallerCard() {
+  if (personalVerified?.verified) {
+    return `
+    <div class="profile-card">
+      <h3 class="card-title">📱 Numărul tău personal (verificat)</h3>
+      <div class="aicall-number-display">
+        <div class="aicall-number-big">${personalVerified.phone_number}</div>
+        <div class="aicall-number-meta" style="color:var(--success)">✓ Verificat ca AiCall caller ID</div>
+      </div>
+      <p class="phone-help">
+        Când suni prin AiCall, clienții văd acest număr (cunoscut). Pentru a primi apeluri prin AiCall ai nevoie suplimentar de un număr AiCall (vezi mai jos).
+      </p>
+      <button class="btn-small btn-danger-outline" id="removeVerifiedBtn">Șterge verificarea</button>
+    </div>`;
+  }
+
+  return `
+  <div class="profile-card">
+    <h3 class="card-title">📱 Folosește numărul tău personal (gratis)</h3>
+    <p class="phone-help">
+      Verifică numărul tău existent ca să apară ca tine când suni prin AiCall - <strong>fără să cumperi nimic</strong>.
+      Twilio te apelează cu un cod, răspunzi și-l tastezi pe telefonul tău.
+    </p>
+    <ul class="verify-benefits">
+      <li>✓ Funcționează pentru <strong>apeluri ieșite</strong> (când suni tu)</li>
+      <li>✗ NU primești apeluri prin AiCall pe acest număr (vezi opțiunile mai jos)</li>
+      <li>✓ Gratuit, durează 1 minut</li>
+    </ul>
+    <button class="btn-small btn-accent" id="verifyPersonalBtn">📞 Verifică numărul meu</button>
   </div>`;
 }
 
@@ -259,16 +294,44 @@ export async function mountProfile() {
       const { data } = await supabase.from('users').select('*').eq('id', user.id).maybeSingle();
       profile = data || { email: user.email, full_name: user.user_metadata?.full_name || '' };
     }
-    // Fetch numarul Twilio (best-effort)
+    // Fetch numarul Twilio + verificat personal (best-effort)
     try {
       const r = await api.get('/api/twilio/numbers/mine');
       aicallNumber = r.number;
     } catch {
       aicallNumber = null;
     }
+    try {
+      const v = await api.get('/api/twilio/personal/check');
+      personalVerified = v;
+    } catch {
+      personalVerified = null;
+    }
     rerender();
     return;
   }
+
+  // Verify personal caller ID
+  document.getElementById('verifyPersonalBtn')?.addEventListener('click', () => {
+    openVerifyCallerModal(async () => {
+      try {
+        const v = await api.get('/api/twilio/personal/check');
+        personalVerified = v;
+      } catch {}
+      rerender();
+    });
+  });
+
+  document.getElementById('removeVerifiedBtn')?.addEventListener('click', async () => {
+    if (!confirm('Sigur ștergi verificarea numărului personal?\n\nVa trebui să-l reverifici dacă vrei să-l folosești din nou.')) return;
+    try {
+      await api.delete('/api/twilio/personal');
+      personalVerified = null;
+      rerender();
+    } catch (e) {
+      alert('Stergere esuata: ' + (e.message || ''));
+    }
+  });
 
   // Profile edit
   document.getElementById('editProfile')?.addEventListener('click', () => {

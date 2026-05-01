@@ -57,56 +57,18 @@ function backendAvailable() {
 }
 
 function renderSetupChecklist() {
-  if (callState.hasAiCallNumber === null) return ''; // inca loading
-  // Daca user a verificat numarul personal SAU a cumparat numar AiCall, are caller ID
+  // Pagina Suna e curata: dialpad + credit. Pentru setup numar/voce ->
+  // user merge la Profil (in sidebar/tabbar). Mai mic mesaj informativ
+  // doar daca e prima oara fara nimic configurat.
+  if (callState.hasAiCallNumber === null) return '';
   const hasAnyNumber = callState.hasAiCallNumber || callState.hasPersonalVerified;
-  const items = [];
-  if (!hasAnyNumber) {
-    items.push({
-      icon: '📱',
-      title: 'Folosește numărul tău personal',
-      desc: 'Verifici numărul tău (Twilio te sună cu un cod). Gratis, clienții văd numărul tău cunoscut.',
-      action: 'verify-personal',
-      actionLabel: 'Verifică',
-    });
-    items.push({
-      icon: '📞',
-      title: 'SAU cumpără număr AiCall',
-      desc: 'Necesar dacă vrei să primești apeluri prin AiCall. ~$1.15/lună (UK Local).',
-      action: 'buy-number',
-      actionLabel: 'Cumpără',
-    });
-  }
-  if (callState.hasVoiceClone === false && callState.useTranslation) {
-    items.push({
-      icon: '🎙️',
-      title: 'Clonează-ți vocea (opțional)',
-      desc: 'Cu voce clonată, interlocutorul aude vocea ta în limba lui. Fără, voce default.',
-      action: 'voice',
-      actionLabel: 'Înregistrează',
-    });
-  }
-  if (!items.length) return '';
+  if (hasAnyNumber) return '';
   return `
-    <div class="setup-checklist-wrap">
-      <div class="setup-checklist">
-        <div class="setup-checklist-head">
-          <h3>👋 Bun venit în AiCall</h3>
-          <p>Alege cum apari celorlalti când suni:</p>
-        </div>
-        ${items.map((it, i) => `
-          <div class="setup-card">
-            <div class="setup-card-icon">${it.icon}</div>
-            <div class="setup-card-body">
-              <div class="setup-card-info">
-                <h4>${it.title}</h4>
-                <span class="setup-desc">${it.desc}</span>
-              </div>
-              <button class="btn-primary setup-action" data-target="${it.action}">${it.actionLabel}</button>
-            </div>
-          </div>
-        `).join('')}
-      </div>
+    <div class="setup-hint">
+      <span class="setup-hint-icon">ℹ️</span>
+      <span class="setup-hint-text">
+        Pentru a suna, configurează un număr în <button class="link-btn setup-go-profile" type="button">Profil</button>
+      </span>
     </div>`;
 }
 
@@ -350,39 +312,11 @@ export function mountCall() {
     });
   }
 
-  // Setup checklist actions:
-  //  - 'verify-personal' -> deschide modal verificare numar personal
-  //  - 'buy-number' -> deschide modal cumparare numar Twilio
-  //  - 'voice' / alt tab -> click pe tab-ul corespunzator
-  document.querySelectorAll('.setup-action').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const target = btn.dataset.target;
-      if (target === 'verify-personal') {
-        openVerifyCallerModal(() => {
-          callState.hasPersonalVerified = true;
-          const content = document.getElementById('content');
-          if (content && callState.status === 'idle') {
-            content.innerHTML = renderDialpad();
-            mountCall();
-          }
-        });
-        return;
-      }
-      if (target === 'buy-number') {
-        openBuyNumberModal(() => {
-          callState.hasAiCallNumber = true;
-          const content = document.getElementById('content');
-          if (content && callState.status === 'idle') {
-            content.innerHTML = renderDialpad();
-            mountCall();
-          }
-        });
-        return;
-      }
-      const tab = document.querySelector(`.tab[data-tab="${target}"]`)
-                || document.querySelector(`.sidebar-item[data-tab="${target}"]`);
-      if (tab) tab.click();
-    });
+  // Hint -> du-te la Profil
+  document.querySelector('.setup-go-profile')?.addEventListener('click', () => {
+    const tab = document.querySelector('.tab[data-tab="profile"]')
+              || document.querySelector('.sidebar-item[data-tab="profile"]');
+    if (tab) tab.click();
   });
 
   if (callState.status === 'idle') {
