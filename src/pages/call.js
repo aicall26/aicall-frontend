@@ -4,6 +4,7 @@ import * as twilioVoice from '../lib/twilioVoice.js';
 import { startBilling, stopBilling } from '../lib/billingTick.js';
 import { fetchCredit, getCachedCredit, formatCredit, formatMinutes, onCreditChange } from '../lib/credit.js';
 import { openBuyNumberModal } from '../lib/numberPurchase.js';
+import { openVerifyCallerModal } from '../lib/verifyCaller.js';
 
 let callState = {
   status: 'idle',
@@ -18,6 +19,7 @@ let callState = {
   warningModal: null,
   hasAiCallNumber: null, // null=loading, true=ok, false=missing
   hasVoiceClone: null,
+  hasPersonalVerified: null,
 };
 let targetLang = localStorage.getItem('aicall-target-lang') || 'EN';
 let ringtoneCtx = null;
@@ -56,23 +58,32 @@ function backendAvailable() {
 
 function renderSetupChecklist() {
   if (callState.hasAiCallNumber === null) return ''; // inca loading
+  // Daca user a verificat numarul personal SAU a cumparat numar AiCall, are caller ID
+  const hasAnyNumber = callState.hasAiCallNumber || callState.hasPersonalVerified;
   const items = [];
-  if (callState.hasAiCallNumber === false) {
+  if (!hasAnyNumber) {
+    items.push({
+      icon: '📱',
+      title: 'Folosește numărul tău personal',
+      desc: 'Verifici numărul tău (Twilio te sună cu un cod). Gratis, clienții văd numărul tău cunoscut.',
+      action: 'verify-personal',
+      actionLabel: 'Verifică',
+    });
     items.push({
       icon: '📞',
-      title: 'Cumpără numărul tău AiCall',
-      desc: 'De aici începe totul - alege un număr UK ($1.15/lună) sau orice altă țară. Se cumpără direct din app, fără ieșire la Twilio.',
+      title: 'SAU cumpără număr AiCall',
+      desc: 'Necesar dacă vrei să primești apeluri prin AiCall. ~$1.15/lună (UK Local).',
       action: 'buy-number',
-      actionLabel: 'Cumpără acum',
+      actionLabel: 'Cumpără',
     });
   }
   if (callState.hasVoiceClone === false && callState.useTranslation) {
     items.push({
       icon: '🎙️',
       title: 'Clonează-ți vocea (opțional)',
-      desc: 'Fără voce clonată, traducerea folosește o voce default. Cu voce clonată, interlocutorul aude vocea ta în limba lui.',
+      desc: 'Cu voce clonată, interlocutorul aude vocea ta în limba lui. Fără, voce default.',
       action: 'voice',
-      actionLabel: 'Înregistrează acum',
+      actionLabel: 'Înregistrează',
     });
   }
   if (!items.length) return '';
@@ -81,7 +92,7 @@ function renderSetupChecklist() {
       <div class="setup-checklist">
         <div class="setup-checklist-head">
           <h3>👋 Bun venit în AiCall</h3>
-          <p>Înainte de a suna, finalizează setup-ul:</p>
+          <p>Alege cum apari celorlalti când suni:</p>
         </div>
         ${items.map((it, i) => `
           <div class="setup-card">
@@ -306,20 +317,23 @@ export function mountCall() {
     fetchCredit();
   }
 
-  // Fetch setup status (numar AiCall + voce clonata) la fiecare mount din state idle
-  // ca sa prinda schimbari (dupa cumparare numar / clonare voce)
+  // Fetch setup status (numar AiCall + voce clonata + numar personal verificat)
   if (callState.status === 'idle' && backendAvailable()) {
     Promise.all([
       api.get('/api/twilio/numbers/mine').catch(() => ({ number: null })),
       api.get('/api/voice/info').catch(() => ({ has_voice: false })),
-    ]).then(([numRes, voiceRes]) => {
+      api.get('/api/twilio/personal/check').catch(() => ({ verified: false })),
+    ]).then(([numRes, voiceRes, personalRes]) => {
       const hadNumber = callState.hasAiCallNumber;
       const hadVoice = callState.hasVoiceClone;
+      const hadPersonal = callState.hasPersonalVerified;
       callState.hasAiCallNumber = !!numRes?.number;
       callState.hasVoiceClone = !!voiceRes?.has_voice;
-      // Re-render doar daca ceva s-a schimbat (sa nu refacem la fiecare ms)
+      callState.hasPersonalVerified = !!personalRes?.verified;
       if (callState.status === 'idle' &&
-          (hadNumber !== callState.hasAiCallNumber || hadVoice !== callState.hasVoiceClone)) {
+          (hadNumber !== callState.hasAiCallNumber ||
+           hadVoice !== callState.hasVoiceClone ||
+           hadPersonal !== callState.hasPersonalVerified)) {
         const content = document.getElementById('content');
         if (content) {
           content.innerHTML = renderDialpad();
@@ -337,13 +351,25 @@ export function mountCall() {
   }
 
   // Setup checklist actions:
-  //  - 'buy-number' -> deschide modal de cumparare integrat
+  //  - 'verify-personal' -> deschide modal verificare numar personal
+  //  - 'buy-number' -> deschide modal cumparare numar Twilio
   //  - 'voice' / alt tab -> click pe tab-ul corespunzator
   document.querySelectorAll('.setup-action').forEach(btn => {
     btn.addEventListener('click', () => {
       const target = btn.dataset.target;
+      if (target === 'verify-personal') {
+        openVerifyCallerModal(() => {
+          callState.hasPersonalVerified = true;
+          const content = document.getElementById('content');
+          if (content && callState.status === 'idle') {
+            content.innerHTML = renderDialpad();
+            mountCall();
+          }
+        });
+        return;
+      }
       if (target === 'buy-number') {
-        openBuyNumberModal((result) => {
+        openBuyNumberModal(() => {
           callState.hasAiCallNumber = true;
           const content = document.getElementById('content');
           if (content && callState.status === 'idle') {
@@ -353,7 +379,6 @@ export function mountCall() {
         });
         return;
       }
-      // Pentru voce sau altele: click tab in tabbar (mobile) sau sidebar (desktop)
       const tab = document.querySelector(`.tab[data-tab="${target}"]`)
                 || document.querySelector(`.sidebar-item[data-tab="${target}"]`);
       if (tab) tab.click();

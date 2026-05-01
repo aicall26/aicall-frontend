@@ -261,6 +261,114 @@ def release_number(user_id: str) -> dict:
     return {"released": True, "phone_number": number}
 
 
+# ============================================================
+# Verified Caller ID - foloseste numarul personal pt outbound (gratis)
+# ============================================================
+def add_verified_caller(user_id: str, phone_number: str, friendly_name: Optional[str] = None) -> dict:
+    """
+    Cere Twilio sa verifice un numar personal. Twilio va apela numarul si va
+    cere un cod (validation_code) pe care user-ul trebuie sa-l introduca.
+
+    Returneaza dict cu validation_code pe care frontend-ul il afiseaza user-ului.
+    Dupa ce user-ul raspunde la apel si introduce codul, numarul e Verified.
+    """
+    if not config.has_twilio():
+        raise RuntimeError("Twilio not configured")
+    if not phone_number.startswith("+"):
+        raise ValueError("Numarul trebuie sa fie in format international: +40712345678")
+
+    sb = supabase_admin()
+    user_res = sb.table("users").select("full_name, email").eq("id", user_id).maybe_single().execute()
+    label = friendly_name
+    if not label and user_res and user_res.data:
+        label = user_res.data.get("full_name") or user_res.data.get("email") or "AiCall User"
+    label = (label or "AiCall User")[:64]
+
+    client = _twilio_client()
+    try:
+        validation = client.validation_requests.create(
+            phone_number=phone_number,
+            friendly_name=label,
+        )
+    except Exception as e:
+        log.exception(f"Twilio validation request failed for {phone_number}")
+        raise RuntimeError(f"Eroare Twilio: {e}")
+
+    # Salvam in DB pending verification
+    sb.table("users").update({
+        "phone_number": phone_number,
+        "phone_verified": False,
+    }).eq("id", user_id).execute()
+
+    return {
+        "phone_number": phone_number,
+        "validation_code": validation.validation_code,
+        "friendly_name": label,
+        "message": "Twilio te suna acum. Raspunde si introdu codul de mai jos pe tastatura.",
+    }
+
+
+def check_verified_caller(user_id: str) -> dict:
+    """Verifica daca numarul personal al user-ului apare in lista Twilio Verified Caller IDs."""
+    if not config.has_twilio():
+        raise RuntimeError("Twilio not configured")
+
+    sb = supabase_admin()
+    user_res = sb.table("users").select("phone_number, phone_verified").eq("id", user_id).maybe_single().execute()
+    if not user_res or not user_res.data or not user_res.data.get("phone_number"):
+        return {"verified": False, "message": "Niciun numar personal asociat"}
+
+    phone = user_res.data["phone_number"]
+    client = _twilio_client()
+    try:
+        verified_list = client.outgoing_caller_ids.list(phone_number=phone, limit=5)
+    except Exception as e:
+        log.exception("Failed to list outgoing caller IDs")
+        raise RuntimeError(f"Eroare Twilio: {e}")
+
+    is_verified = any(c.phone_number == phone for c in verified_list)
+    if is_verified and not user_res.data.get("phone_verified"):
+        sb.table("users").update({"phone_verified": True}).eq("id", user_id).execute()
+    elif not is_verified and user_res.data.get("phone_verified"):
+        sb.table("users").update({"phone_verified": False}).eq("id", user_id).execute()
+
+    return {
+        "verified": is_verified,
+        "phone_number": phone,
+        "message": "Numar verificat ✓" if is_verified else "Inca neverificat. Daca ai introdus codul, asteapta cateva secunde.",
+    }
+
+
+def remove_verified_caller(user_id: str) -> dict:
+    """Sterge numarul personal verificat de la Twilio + curata DB."""
+    if not config.has_twilio():
+        raise RuntimeError("Twilio not configured")
+
+    sb = supabase_admin()
+    user_res = sb.table("users").select("phone_number").eq("id", user_id).maybe_single().execute()
+    if not user_res or not user_res.data or not user_res.data.get("phone_number"):
+        return {"removed": False}
+
+    phone = user_res.data["phone_number"]
+    client = _twilio_client()
+    try:
+        verified_list = client.outgoing_caller_ids.list(phone_number=phone, limit=5)
+        for c in verified_list:
+            try:
+                client.outgoing_caller_ids(c.sid).delete()
+            except Exception:
+                pass
+    except Exception as e:
+        log.warning(f"Failed to remove caller ID: {e}")
+
+    sb.table("users").update({
+        "phone_number": None,
+        "phone_verified": False,
+    }).eq("id", user_id).execute()
+
+    return {"removed": True}
+
+
 def get_user_number(user_id: str) -> Optional[dict]:
     sb = supabase_admin()
     res = sb.table("users").select(

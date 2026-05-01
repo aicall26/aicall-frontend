@@ -1113,6 +1113,36 @@ input { font-family: inherit; color: var(--text-primary); }
   line-height: 1.4;
 }
 
+.verify-modal { max-width: 440px; }
+.verify-benefits {
+  list-style: none;
+  padding: 12px 14px;
+  background: var(--bg-input);
+  border-radius: var(--radius-sm);
+  margin: 12px 0;
+}
+.verify-benefits li {
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+.validation-code-display {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  margin: 18px 0 8px;
+}
+.code-digit {
+  width: 44px; height: 56px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 28px; font-weight: 700;
+  background: var(--bg-card);
+  border: 2px solid var(--accent);
+  border-radius: var(--radius-sm);
+  color: var(--accent);
+  font-family: 'JetBrains Mono', 'Courier New', monospace;
+}
+
 .results-section { margin-top: 14px; }
 .results-header {
   font-size: 12px;

@@ -105,14 +105,25 @@ async def twilio_voice_outbound(request: Request):
 
     log.info(f"Outbound call: from={from_identity} to={to_number} sid={call_sid}")
 
-    # Extrag user_id din identity ca sa folosesc numarul lui Twilio drept caller-id
+    # Extrag user_id din identity. Caller ID prioritate:
+    #  1. Numarul personal verificat (preferentiat - clientul vede numarul cunoscut)
+    #  2. Numarul Twilio cumparat
+    #  3. None (Twilio respinge daca cont Trial fara verified)
     caller_id = None
     if from_identity.startswith("client:"):
         user_id = from_identity.split(":", 1)[1]
         try:
-            num_info = pn.get_user_number(user_id)
-            if num_info:
-                caller_id = num_info["twilio_phone_number"]
+            sb = supabase_admin()
+            user_res = sb.table("users").select(
+                "phone_number, phone_verified, twilio_phone_number"
+            ).eq("id", user_id).maybe_single().execute()
+            if user_res and user_res.data:
+                u = user_res.data
+                # Preferam numarul personal verificat (cel pe care clientul deja il stie)
+                if u.get("phone_verified") and u.get("phone_number"):
+                    caller_id = u["phone_number"]
+                elif u.get("twilio_phone_number"):
+                    caller_id = u["twilio_phone_number"]
         except Exception as e:
             log.warning(f"Could not lookup user phone: {e}")
 
@@ -420,6 +431,48 @@ def numbers_release(user_id: str = Depends(get_current_user_id)):
 def numbers_mine(user_id: str = Depends(get_current_user_id)):
     info = pn.get_user_number(user_id)
     return {"number": info}
+
+
+# ============================================================
+# Verified Caller ID - foloseste numarul personal pt outbound
+# ============================================================
+class VerifiedCallerRequest(BaseModel):
+    phone_number: str
+
+
+@app.post("/api/twilio/personal/verify")
+def personal_verify(req: VerifiedCallerRequest, user_id: str = Depends(get_current_user_id)):
+    if not config.has_twilio():
+        raise HTTPException(503, "Twilio not configured")
+    try:
+        return pn.add_verified_caller(user_id, req.phone_number)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    except RuntimeError as e:
+        raise HTTPException(502, str(e))
+    except Exception as e:
+        log.exception("Verify caller failed")
+        raise HTTPException(500, str(e))
+
+
+@app.get("/api/twilio/personal/check")
+def personal_check(user_id: str = Depends(get_current_user_id)):
+    if not config.has_twilio():
+        raise HTTPException(503, "Twilio not configured")
+    try:
+        return pn.check_verified_caller(user_id)
+    except RuntimeError as e:
+        raise HTTPException(502, str(e))
+
+
+@app.delete("/api/twilio/personal")
+def personal_delete(user_id: str = Depends(get_current_user_id)):
+    if not config.has_twilio():
+        raise HTTPException(503, "Twilio not configured")
+    try:
+        return pn.remove_verified_caller(user_id)
+    except RuntimeError as e:
+        raise HTTPException(502, str(e))
 
 
 # ============================================================
