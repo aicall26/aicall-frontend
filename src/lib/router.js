@@ -341,6 +341,7 @@ function showHowItWorksModal() {
 export function renderApp() {
   menuOpen = false;
   const app = document.getElementById('app');
+  app.classList.remove('login-mode');
   app.innerHTML = `
     ${renderSidebar()}
     ${renderHeader()}

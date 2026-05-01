@@ -635,6 +635,33 @@ input { font-family: inherit; color: var(--text-primary); }
 .sidebar { display: none; }
 .header-page-title { display: none; }
 
+/* Login mode - override grid layout, centred page indiferent de ecran */
+#app.login-mode {
+  display: flex !important;
+  flex-direction: column !important;
+  grid-template-columns: none !important;
+  grid-template-rows: none !important;
+  grid-template-areas: none !important;
+  max-width: none !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  height: 100dvh !important;
+  margin: 0 !important;
+  border: none !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  overflow: auto !important;
+  background: var(--bg-primary);
+}
+@media (min-width: 768px) {
+  #app.login-mode {
+    background: linear-gradient(135deg, #0a0a14 0%, #1a1a36 100%);
+  }
+  [data-theme="light"] #app.login-mode {
+    background: linear-gradient(135deg, #eef2ff 0%, #ddd6fe 100%);
+  }
+}
+
 /* Pe tablet/desktop mediu (768-1023px), pastrez layout mobile centred dar
    adaug background ca sa nu fie ecranul gol */
 @media (min-width: 768px) and (max-width: 1023px) {

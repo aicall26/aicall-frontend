@@ -80,6 +80,7 @@ async function init() {
 
 function showLogin() {
   const app = document.getElementById('app');
+  app.classList.add('login-mode');
   app.innerHTML = renderLogin();
   mountLogin();
 }
