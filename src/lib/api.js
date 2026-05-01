@@ -56,9 +56,9 @@ async function request(path, options = {}) {
     }
     const friendlyMsg = detail || `HTTP ${res.status}`;
     if (res.status === 401) {
-      // Auto-logout: stergere sesiune locala -> redirect la login
-      try { await supabase.auth.signOut(); } catch {}
-      throw new ApiError('Sesiunea a expirat. Te-am deconectat - autentifica-te din nou.', 401, body);
+      // NU mai facem auto-logout - cauza loops cand request-uri tranzitorii dau 401.
+      // User vede mesajul si decide manual sa se deconecteze daca e nevoie.
+      throw new ApiError('Autorizare invalida (HTTP 401). Reincarca pagina sau reconecteaza-te manual din meniu.', 401, body);
     }
     if (res.status === 402) {
       throw new ApiError(friendlyMsg, 402, body);
