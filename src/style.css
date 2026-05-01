@@ -1048,16 +1048,14 @@ input { font-family: inherit; color: var(--text-primary); }
   line-height: 1.3;
 }
 
-/* Modal special pt cumparare numar (mai mare) */
+/* Modal cumparare numar - inspirat din Twilio Console */
 .modal-card.number-modal {
-  max-width: 560px;
+  max-width: 580px;
   position: relative;
   max-height: 88vh;
   overflow-y: auto;
 }
-.modal-card.number-modal h3 {
-  margin-bottom: 4px;
-}
+.modal-card.number-modal h3 { margin-bottom: 4px; padding-right: 32px; }
 .modal-close-x {
   position: absolute;
   top: 12px; right: 16px;
@@ -1071,6 +1069,62 @@ input { font-family: inherit; color: var(--text-primary); }
   line-height: 1;
 }
 .modal-close-x:hover { background: var(--bg-input); color: var(--text-primary); }
+
+.number-search-form {
+  background: var(--bg-input);
+  border-radius: var(--radius-sm);
+  padding: 14px;
+  margin: 12px 0;
+}
+.number-search-form .phone-search-row { margin-bottom: 10px; }
+.number-search-form label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-bottom: 4px;
+}
+.info-btn {
+  background: none; border: none;
+  font-size: 14px; cursor: pointer;
+  padding: 0; opacity: 0.7;
+}
+.info-btn:hover { opacity: 1; }
+.type-info-card {
+  background: rgba(108, 99, 255, 0.08);
+  border: 1px solid rgba(108, 99, 255, 0.20);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  margin-bottom: 10px;
+  font-size: 12px;
+  display: none;
+  line-height: 1.5;
+}
+.type-info-card.open { display: block; }
+.type-info-card strong { display: block; margin-bottom: 4px; color: var(--text-primary); }
+.type-info-card p { color: var(--text-secondary); }
+.hint-text {
+  display: block;
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 4px;
+  line-height: 1.4;
+}
+
+.results-section { margin-top: 14px; }
+.results-header {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-bottom: 8px;
+}
+.phone-result-info { display: flex; flex-direction: column; gap: 2px; flex: 1; }
+.phone-result-price {
+  font-size: 12px;
+  color: var(--accent);
+  margin-top: 2px;
+}
 
 /* ── Voice clone test in multiple languages ── */
 .audio-preview {

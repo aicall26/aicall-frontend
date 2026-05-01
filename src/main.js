@@ -78,12 +78,20 @@ async function ensureCorrectSupabaseToken() {
   const url = import.meta.env.VITE_SUPABASE_URL || '';
   if (!url) return true;
 
-  const expectedIss = url.replace(/\/$/, '') + '/auth/v1';
-  const payload = decodeJwt(session.access_token);
-  if (payload && payload.iss && payload.iss !== expectedIss) {
-    console.warn('[AiCall] Token de la alt Supabase project detectat, fac logout. Token iss:', payload.iss, 'expected:', expectedIss);
-    try { await supabase.auth.signOut(); } catch {}
-    return false;
+  try {
+    const expectedHost = new URL(url).host; // ex: tetzhzolintcrdspneet.supabase.co
+    const payload = decodeJwt(session.access_token);
+    if (payload && payload.iss) {
+      const tokenHost = new URL(payload.iss).host;
+      if (tokenHost !== expectedHost) {
+        console.warn('[AiCall] Token de pe alt Supabase project. Token host:', tokenHost, 'expected:', expectedHost);
+        try { await supabase.auth.signOut(); } catch {}
+        try { localStorage.clear(); } catch {}
+        return false;
+      }
+    }
+  } catch (e) {
+    console.warn('[AiCall] Token check failed:', e);
   }
   return true;
 }

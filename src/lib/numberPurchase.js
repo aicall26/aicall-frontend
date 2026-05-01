@@ -1,11 +1,11 @@
 /**
- * Modal de cumparare numar AiCall - reutilizabil din mai multe pagini.
+ * Modal cumparare numar AiCall - inspirat din Twilio Console.
  *
- * Foloseste API:
- *  - GET /api/twilio/numbers/search?country=GB&type=local&limit=10
- *  - POST /api/twilio/numbers/buy {phone_number, country, type}
- *
- * onSuccess(result) primeste { phone_number, phone_sid, monthly_cents, ... }
+ * Features:
+ * - Filtru tara + tip + cifre dorite (contains)
+ * - Tooltip explicativ pentru fiecare tip
+ * - Lista cu locality, region, capabilities
+ * - Buton cumparare cu confirmare
  */
 import { api } from './api.js';
 import { fetchCredit } from './credit.js';
@@ -39,18 +39,35 @@ const COUNTRY_OPTIONS = [
 ];
 
 const TYPE_OPTIONS = [
-  { code: 'local', label: 'Local (fix)' },
-  { code: 'mobile', label: 'Mobil' },
-  { code: 'tollfree', label: 'Toll-free' },
+  {
+    code: 'local',
+    label: 'Local (fix)',
+    desc: 'Număr geografic dintr-un oraș (ex: Londra 020, Manchester 0161). Cel mai ieftin (~$1.15/lună). Nu suportă SMS în majoritatea țărilor.',
+    icon: '🏠',
+  },
+  {
+    code: 'mobile',
+    label: 'Mobil',
+    desc: 'Număr de mobil (ex: UK 07XX, DE 0151X). Mai scump (~$3.75/lună UK). Suportă SMS. Pare mai personal celor care te sună.',
+    icon: '📱',
+  },
+  {
+    code: 'tollfree',
+    label: 'Toll-Free (gratuit pentru apelant)',
+    desc: 'Numere 0800 / 1-800. Cel care te sună NU plătește apelul (tu plătești și partea lor). Util pentru linii de suport clienți. ~$2/lună (doar US/CA).',
+    icon: '☎️',
+  },
 ];
 
 const STATE = {
   country: 'GB',
   type: 'local',
+  contains: '',
   searching: false,
   results: null,
   error: null,
   buying: false,
+  showTypeInfo: false,
   onSuccess: null,
 };
 
@@ -67,54 +84,91 @@ function renderCountryOptions() {
   ).join('');
 }
 
+function getCurrentTypeInfo() {
+  return TYPE_OPTIONS.find(t => t.code === STATE.type) || TYPE_OPTIONS[0];
+}
+
 function renderModalHTML() {
+  const typeInfo = getCurrentTypeInfo();
+
   return `
     <div class="modal-overlay" id="numberModalOverlay">
       <div class="modal-card number-modal">
         <button class="modal-close-x" id="modalCloseX" aria-label="Inchide">×</button>
         <h3 class="modal-title">📞 Cumpără numărul tău AiCall</h3>
-        <p class="phone-help">Acesta este numărul pe care îl vor folosi clienții ca să te sune și care apare ca tine când suni tu pe alții.</p>
+        <p class="phone-help">Acesta va fi numărul cu care te sună clienții și care apare la celălalt când suni tu.</p>
 
-        <div class="phone-search-row">
-          <div class="phone-search-field">
-            <label>Țară</label>
-            <select id="modalCountry" class="form-input">
-              ${renderCountryOptions()}
-            </select>
+        <div class="number-search-form">
+          <div class="phone-search-row">
+            <div class="phone-search-field">
+              <label>🌍 Țara</label>
+              <select id="modalCountry" class="form-input">
+                ${renderCountryOptions()}
+              </select>
+            </div>
+            <div class="phone-search-field">
+              <label>📋 Tip număr <button type="button" class="info-btn" id="toggleTypeInfo" aria-label="Explicatii tipuri">ℹ️</button></label>
+              <select id="modalType" class="form-input">
+                ${TYPE_OPTIONS.map(t => `<option value="${t.code}" ${t.code === STATE.type ? 'selected' : ''}>${t.icon} ${t.label}</option>`).join('')}
+              </select>
+            </div>
           </div>
-          <div class="phone-search-field">
-            <label>Tip</label>
-            <select id="modalType" class="form-input">
-              ${TYPE_OPTIONS.map(t => `<option value="${t.code}" ${t.code === STATE.type ? 'selected' : ''}>${t.label}</option>`).join('')}
-            </select>
+
+          <div class="type-info-card ${STATE.showTypeInfo ? 'open' : ''}">
+            <strong>${typeInfo.icon} ${typeInfo.label}</strong>
+            <p>${typeInfo.desc}</p>
           </div>
+
+          <div class="phone-search-field">
+            <label>🔢 Caută cifre dorite (opțional)</label>
+            <input type="text" id="modalContains" class="form-input" maxlength="12"
+              placeholder="ex: 207 (Londra), 1234, 666"
+              value="${STATE.contains}" />
+            <small class="hint-text">Lasă gol pentru orice număr disponibil. Folosește prefixe ca să găsești numere dintr-un oraș anume.</small>
+          </div>
+
+          <button class="btn-primary" id="modalSearchBtn" ${STATE.searching ? 'disabled' : ''}>
+            ${STATE.searching ? '🔍 Caut numere...' : '🔍 Caută numere disponibile'}
+          </button>
         </div>
 
-        <button class="btn-primary" id="modalSearchBtn" ${STATE.searching ? 'disabled' : ''}>
-          ${STATE.searching ? '🔍 Caut numere...' : '🔍 Caută numere disponibile'}
-        </button>
-
-        ${STATE.error ? `<div class="profile-msg error" style="margin-top:12px">${STATE.error}</div>` : ''}
+        ${STATE.error ? `<div class="profile-msg error">${STATE.error}</div>` : ''}
 
         ${STATE.results !== null ? `
-          <div class="phone-results-list">
-            ${STATE.results.length === 0
-              ? '<div class="empty-state"><p>Nu sunt numere disponibile pentru aceasta combinatie. Incearca alta tara sau alt tip.</p></div>'
-              : STATE.results.map((n, i) => `
-                <div class="phone-result-row">
-                  <div class="phone-result-info">
-                    <div class="phone-result-number">${n.phone_number}</div>
-                    <div class="phone-result-meta">
-                      ${n.locality ? n.locality + ' · ' : ''}${n.country} ${n.type} ·
-                      <strong>$${n.monthly_usd}/lună</strong>
+          <div class="results-section">
+            <div class="results-header">
+              ${STATE.results.length > 0
+                ? `<strong>${STATE.results.length} numere găsite</strong>`
+                : ''}
+            </div>
+            <div class="phone-results-list">
+              ${STATE.results.length === 0
+                ? `<div class="empty-state">
+                    <p><strong>Niciun număr disponibil</strong></p>
+                    <p>Încearcă altă țară sau alt tip. Pentru ${typeInfo.label} în această țară Twilio poate să nu aibă stoc acum.</p>
+                  </div>`
+                : STATE.results.map((n, i) => `
+                  <div class="phone-result-row">
+                    <div class="phone-result-info">
+                      <div class="phone-result-number">${n.phone_number}</div>
+                      <div class="phone-result-meta">
+                        ${n.locality ? `📍 ${n.locality}` : ''}
+                        ${n.region ? ` · ${n.region}` : ''}
+                        ${n.locality || n.region ? ' · ' : ''}
+                        🇬🇧 ${n.country}
+                        · ${typeInfo.icon} ${typeInfo.label.split(' ')[0]}
+                      </div>
+                      <div class="phone-result-price">
+                        💵 <strong>$${n.monthly_usd}/lună</strong>
+                      </div>
                     </div>
+                    <button class="btn-small btn-accent buy-btn" data-index="${i}" ${STATE.buying ? 'disabled' : ''}>
+                      ${STATE.buying ? '...' : 'Cumpără'}
+                    </button>
                   </div>
-                  <button class="btn-small btn-accent buy-btn" data-index="${i}" ${STATE.buying ? 'disabled' : ''}>
-                    ${STATE.buying ? '...' : 'Cumpără'}
-                  </button>
-                </div>
-              `).join('')
-            }
+                `).join('')
+              }
+            </div>
           </div>
         ` : ''}
       </div>
@@ -124,39 +178,53 @@ function renderModalHTML() {
 function rerender() {
   const overlay = document.getElementById('numberModalOverlay');
   if (!overlay) return;
+  // Pastreaza scroll position
+  const card = overlay.querySelector('.modal-card');
+  const scrollTop = card?.scrollTop || 0;
   overlay.outerHTML = renderModalHTML();
   bindEvents();
+  // Restore scroll
+  const newCard = document.querySelector('#numberModalOverlay .modal-card');
+  if (newCard) newCard.scrollTop = scrollTop;
 }
 
 function bindEvents() {
   const overlay = document.getElementById('numberModalOverlay');
   if (!overlay) return;
 
-  // Close on overlay click
   overlay.addEventListener('click', (e) => {
     if (e.target === overlay) closeModal();
   });
   document.getElementById('modalCloseX')?.addEventListener('click', closeModal);
 
-  // Country / Type changes
   document.getElementById('modalCountry')?.addEventListener('change', (e) => {
     STATE.country = e.target.value;
   });
   document.getElementById('modalType')?.addEventListener('change', (e) => {
     STATE.type = e.target.value;
+    rerender(); // sa updateze descrierea tipului
+  });
+  document.getElementById('toggleTypeInfo')?.addEventListener('click', () => {
+    STATE.showTypeInfo = !STATE.showTypeInfo;
+    rerender();
+  });
+  document.getElementById('modalContains')?.addEventListener('input', (e) => {
+    STATE.contains = e.target.value.replace(/[^0-9]/g, '').slice(0, 12);
+    if (e.target.value !== STATE.contains) e.target.value = STATE.contains;
   });
 
-  // Search
   document.getElementById('modalSearchBtn')?.addEventListener('click', async () => {
     STATE.searching = true;
     STATE.error = null;
     STATE.results = null;
     rerender();
     try {
-      const res = await api.get(`/api/twilio/numbers/search?country=${STATE.country}&type=${STATE.type}&limit=10`);
+      let url = `/api/twilio/numbers/search?country=${STATE.country}&type=${STATE.type}&limit=15`;
+      if (STATE.contains) url += `&contains=${encodeURIComponent(STATE.contains)}`;
+      const res = await api.get(url);
       STATE.results = res.numbers || [];
     } catch (e) {
-      STATE.error = 'Cautarea a esuat: ' + (e.message || 'eroare necunoscuta');
+      STATE.error = 'Cautare esuata: ' + (e.message || 'eroare necunoscuta');
       STATE.results = null;
     } finally {
       STATE.searching = false;
@@ -164,7 +232,6 @@ function bindEvents() {
     }
   });
 
-  // Buy
   document.querySelectorAll('.buy-btn').forEach(btn => {
     btn.addEventListener('click', async () => {
       const idx = parseInt(btn.dataset.index, 10);
@@ -173,8 +240,9 @@ function bindEvents() {
 
       const confirmed = confirm(
         `Cumperi numărul ${number.phone_number}?\n\n` +
+        `Locație: ${number.locality || number.country}\n` +
         `Cost lunar: $${number.monthly_usd}\n` +
-        `Se va scădea acum din credit.`
+        `Se va scădea acum din credit (prima lună plătită upfront).`
       );
       if (!confirmed) return;
 
@@ -190,14 +258,15 @@ function bindEvents() {
         });
         STATE.buying = false;
         await fetchCredit();
-        // Close modal + callback
         closeModal();
         if (STATE.onSuccess) {
           try { STATE.onSuccess(result); } catch {}
         }
+        // Mesaj succes
+        alert(`✓ Numărul ${result.phone_number} a fost cumpărat!\n\nApare în Profil → Numărul tău AiCall.`);
       } catch (e) {
         STATE.buying = false;
-        STATE.error = 'Cumparare esuata: ' + (e.message || 'eroare');
+        STATE.error = 'Cumpărare eșuată: ' + (e.message || 'eroare');
         rerender();
       }
     });
@@ -211,11 +280,12 @@ function closeModal() {
   STATE.error = null;
   STATE.searching = false;
   STATE.buying = false;
+  STATE.contains = '';
+  STATE.showTypeInfo = false;
   STATE.onSuccess = null;
 }
 
 export function openBuyNumberModal(onSuccess) {
-  // Cleanup any existing
   closeModal();
   STATE.onSuccess = onSuccess || null;
 
@@ -226,8 +296,8 @@ export function openBuyNumberModal(onSuccess) {
   container.appendChild(tmp.firstElementChild);
   bindEvents();
 
-  // Auto-trigger initial search to be friendly
+  // Auto-search la deschidere ca user-ul sa vada imediat lista
   setTimeout(() => {
     document.getElementById('modalSearchBtn')?.click();
-  }, 300);
+  }, 200);
 }

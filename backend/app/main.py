@@ -363,6 +363,7 @@ def numbers_search(
     country: str = "GB",
     type: str = "local",
     limit: int = 10,
+    contains: Optional[str] = None,
     user_id: str = Depends(get_current_user_id),
 ):
     if not config.has_twilio():
@@ -370,7 +371,11 @@ def numbers_search(
     if type not in ("local", "mobile", "tollfree"):
         raise HTTPException(400, "type must be local|mobile|tollfree")
     try:
-        results = pn.search_available(country, type, limit=min(20, max(1, limit)))
+        results = pn.search_available(
+            country, type,
+            limit=min(20, max(1, limit)),
+            contains=contains.strip() if contains else None,
+        )
         return {"numbers": results}
     except Exception as e:
         log.exception("Number search failed")

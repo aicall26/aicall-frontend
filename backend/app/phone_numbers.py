@@ -93,23 +93,33 @@ def _twilio_client():
     return Client(config.TWILIO_ACCOUNT_SID, config.TWILIO_AUTH_TOKEN)
 
 
-def search_available(country: str = "GB", number_type: str = "local", limit: int = 10) -> list[dict]:
+def search_available(
+    country: str = "GB",
+    number_type: str = "local",
+    limit: int = 10,
+    contains: Optional[str] = None,
+) -> list[dict]:
     """
     Cauta numere disponibile in tara.
     `country`: ISO code 2 letters ('GB', 'US', etc)
     `number_type`: 'local', 'mobile', 'tollfree'
+    `contains`: cifre/prefix de match in numar (ex '207' pt Londra)
     """
     client = _twilio_client()
     country = country.upper()
 
+    kwargs = {"limit": limit, "voice_enabled": True}
+    if contains:
+        kwargs["contains"] = contains
+
     # API-ul Twilio difera per tip
     base = client.available_phone_numbers(country)
     if number_type == "mobile":
-        results = base.mobile.list(limit=limit, voice_enabled=True)
+        results = base.mobile.list(**kwargs)
     elif number_type == "tollfree":
-        results = base.toll_free.list(limit=limit, voice_enabled=True)
+        results = base.toll_free.list(**kwargs)
     else:
-        results = base.local.list(limit=limit, voice_enabled=True)
+        results = base.local.list(**kwargs)
 
     monthly_cents = get_price_cents(country, number_type)
 
