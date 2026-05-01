@@ -3,6 +3,7 @@ import { api } from '../lib/api.js';
 import * as twilioVoice from '../lib/twilioVoice.js';
 import { startBilling, stopBilling } from '../lib/billingTick.js';
 import { fetchCredit, getCachedCredit, formatCredit, formatMinutes, onCreditChange } from '../lib/credit.js';
+import { openBuyNumberModal } from '../lib/numberPurchase.js';
 
 let callState = {
   status: 'idle',
@@ -54,41 +55,45 @@ function backendAvailable() {
 }
 
 function renderSetupChecklist() {
-  // Doar daca state e populat si lipseste ceva
   if (callState.hasAiCallNumber === null) return ''; // inca loading
   const items = [];
   if (callState.hasAiCallNumber === false) {
     items.push({
       icon: '📞',
-      title: 'Cumpără un număr AiCall',
-      desc: 'Pentru a primi apeluri și a apărea ca tine la celălalt când suni.',
-      action: 'profile',
-      actionLabel: 'Mergi la Profil',
+      title: 'Cumpără numărul tău AiCall',
+      desc: 'De aici începe totul - alege un număr UK ($1.15/lună) sau orice altă țară. Se cumpără direct din app, fără ieșire la Twilio.',
+      action: 'buy-number',
+      actionLabel: 'Cumpără acum',
     });
   }
   if (callState.hasVoiceClone === false && callState.useTranslation) {
     items.push({
       icon: '🎙️',
-      title: 'Clonează-ți vocea',
-      desc: 'Fără voce clonată, traducerea va folosi o voce default (nu vocea ta).',
+      title: 'Clonează-ți vocea (opțional)',
+      desc: 'Fără voce clonată, traducerea folosește o voce default. Cu voce clonată, interlocutorul aude vocea ta în limba lui.',
       action: 'voice',
-      actionLabel: 'Mergi la Vocea Mea',
+      actionLabel: 'Înregistrează acum',
     });
   }
   if (!items.length) return '';
   return `
-    <div class="setup-checklist">
-      <h4>Pentru a folosi AiCall complet</h4>
-      ${items.map(it => `
-        <div class="setup-item">
-          <span class="setup-icon">${it.icon}</span>
-          <div class="setup-body">
-            <strong>${it.title}</strong>
-            <p>${it.desc}</p>
-          </div>
-          <button class="btn-small btn-accent setup-action" data-target="${it.action}">${it.actionLabel}</button>
+    <div class="setup-checklist-wrap">
+      <div class="setup-checklist">
+        <div class="setup-checklist-head">
+          <h3>👋 Bun venit în AiCall</h3>
+          <p>Înainte de a suna, finalizează setup-ul:</p>
         </div>
-      `).join('')}
+        ${items.map((it, i) => `
+          <div class="setup-card">
+            <div class="setup-card-icon">${it.icon}</div>
+            <div class="setup-card-body">
+              <h4>${it.title}</h4>
+              <p>${it.desc}</p>
+              <button class="btn-primary setup-action" data-target="${it.action}">${it.actionLabel}</button>
+            </div>
+          </div>
+        `).join('')}
+      </div>
     </div>`;
 }
 
@@ -325,11 +330,26 @@ export function mountCall() {
     });
   }
 
-  // Setup checklist navigation - click pe tab-ul corespunzator
+  // Setup checklist actions:
+  //  - 'buy-number' -> deschide modal de cumparare integrat
+  //  - 'voice' / alt tab -> click pe tab-ul corespunzator
   document.querySelectorAll('.setup-action').forEach(btn => {
     btn.addEventListener('click', () => {
       const target = btn.dataset.target;
-      const tab = document.querySelector(`.tab[data-tab="${target}"]`);
+      if (target === 'buy-number') {
+        openBuyNumberModal((result) => {
+          callState.hasAiCallNumber = true;
+          const content = document.getElementById('content');
+          if (content && callState.status === 'idle') {
+            content.innerHTML = renderDialpad();
+            mountCall();
+          }
+        });
+        return;
+      }
+      // Pentru voce sau altele: click tab in tabbar (mobile) sau sidebar (desktop)
+      const tab = document.querySelector(`.tab[data-tab="${target}"]`)
+                || document.querySelector(`.sidebar-item[data-tab="${target}"]`);
       if (tab) tab.click();
     });
   });
