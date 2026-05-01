@@ -4,13 +4,14 @@ import { renderContacts, mountContacts } from '../pages/contacts.js';
 import { renderHistory, mountHistory } from '../pages/history.js';
 import { renderVoice, mountVoice } from '../pages/voice.js';
 import { renderProfile, mountProfile } from '../pages/profile.js';
+import { fetchCredit, getCachedCredit, formatCredit, formatMinutes, onCreditChange } from './credit.js';
 
 const pages = {
-  call:     { render: renderCall,     mount: mountCall,     label: 'Sună',      icon: 'phone' },
-  contacts: { render: renderContacts, mount: mountContacts, label: 'Agendă',    icon: 'contacts' },
-  history:  { render: renderHistory,  mount: mountHistory,  label: 'Istoric',    icon: 'clock' },
-  voice:    { render: renderVoice,    mount: mountVoice,    label: 'Vocea Mea',  icon: 'mic' },
-  profile:  { render: renderProfile,  mount: mountProfile,  label: 'Profil',     icon: 'user' },
+  call:     { render: renderCall,     mount: mountCall,     label: 'Sună',      icon: 'phone',    title: 'Sună' },
+  contacts: { render: renderContacts, mount: mountContacts, label: 'Agendă',    icon: 'contacts', title: 'Agendă' },
+  history:  { render: renderHistory,  mount: mountHistory,  label: 'Istoric',   icon: 'clock',    title: 'Istoric apeluri' },
+  voice:    { render: renderVoice,    mount: mountVoice,    label: 'Vocea Mea', icon: 'mic',      title: 'Vocea ta' },
+  profile:  { render: renderProfile,  mount: mountProfile,  label: 'Profil',    icon: 'user',     title: 'Profil' },
 };
 
 const icons = {
@@ -19,10 +20,13 @@ const icons = {
   clock: `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>`,
   mic: `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>`,
   user: `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>`,
+  logout: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>`,
+  help: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`,
 };
 
 let activeTab = 'call';
 let menuOpen = false;
+let unsubCreditSidebar = null;
 
 function renderTabBar() {
   return `<nav class="tabbar">${Object.entries(pages).map(([id, p]) =>
@@ -33,14 +37,63 @@ function renderTabBar() {
   ).join('')}</nav>`;
 }
 
+function renderSidebar() {
+  return `<aside class="sidebar">
+    <div class="sidebar-logo">
+      <h1 class="sidebar-title">Ai<span class="header-accent">Call</span></h1>
+    </div>
+    <nav class="sidebar-nav">
+      ${Object.entries(pages).map(([id, p]) =>
+        `<button class="sidebar-item ${id === activeTab ? 'active' : ''}" data-tab="${id}">
+          <span class="sidebar-icon">${icons[p.icon]}</span>
+          <span class="sidebar-label">${p.label}</span>
+        </button>`
+      ).join('')}
+    </nav>
+    <div class="sidebar-bottom">
+      ${renderSidebarCredit()}
+      <button class="sidebar-action" id="sidebarHelpBtn">
+        <span class="sidebar-icon">${icons.help}</span>
+        <span>Cum funcționează</span>
+      </button>
+      <button class="sidebar-logout" id="sidebarLogoutBtn">
+        <span class="sidebar-icon">${icons.logout}</span>
+        <span>Deconectare</span>
+      </button>
+    </div>
+  </aside>`;
+}
+
+function renderSidebarCredit() {
+  const c = getCachedCredit();
+  const cents = c?.credit_cents ?? 0;
+  const usd = (cents / 100).toFixed(2);
+  const minutes = c ? formatMinutes(c, true) : '—';
+  const low = cents <= 120;
+  const veryLow = cents <= 40;
+  const cls = veryLow ? 'sidebar-credit very-low' : (low ? 'sidebar-credit low' : 'sidebar-credit');
+  const progress = Math.max(0, Math.min(100, (cents / 1000) * 100)); // referinta vs $10
+  return `
+    <div class="${cls}">
+      <small class="sidebar-credit-label">CREDIT DISPONIBIL</small>
+      <div class="sidebar-credit-amount">$${usd}</div>
+      <div class="sidebar-credit-bar">
+        <div class="sidebar-credit-fill" style="width:${progress}%"></div>
+      </div>
+      <small class="sidebar-credit-meta">≈ ${minutes} cu traducere</small>
+    </div>`;
+}
+
 function renderHeader() {
   const theme = document.documentElement.getAttribute('data-theme') || 'dark';
+  const pageTitle = pages[activeTab]?.title || 'AiCall';
   return `<header class="header">
     <div class="header-left">
       <button class="logo-btn" id="logoBtn">
         <h1 class="header-title">Ai<span class="header-accent">Call</span></h1>
         <svg class="logo-chevron ${menuOpen ? 'open' : ''}" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
       </button>
+      <span class="header-page-title">${pageTitle}</span>
       ${menuOpen ? `
       <div class="dropdown-menu" id="dropdownMenu">
         <button class="dropdown-item" data-action="home">
@@ -52,7 +105,7 @@ function renderHeader() {
           Setări
         </button>
         <button class="dropdown-item" data-action="help">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+          ${icons.help}
           Cum funcționează
         </button>
         <button class="dropdown-item" data-action="about">
@@ -65,7 +118,7 @@ function renderHeader() {
         </button>
         <div class="dropdown-divider"></div>
         <button class="dropdown-item danger" data-action="logout">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+          ${icons.logout}
           Deconectare
         </button>
       </div>` : ''}
@@ -78,15 +131,34 @@ function renderHeader() {
   </header>`;
 }
 
+function refreshSidebarCredit() {
+  const sb = document.querySelector('.sidebar-credit');
+  if (sb) sb.outerHTML = renderSidebarCredit();
+}
+
 function switchTab(tab) {
   if (tab === activeTab) return;
   activeTab = tab;
+  // Update header title
+  const headerEl = document.querySelector('.header');
+  if (headerEl) {
+    headerEl.outerHTML = renderHeader();
+    setupHeaderListeners();
+  }
+  // Update content
   const content = document.getElementById('content');
-  content.innerHTML = pages[tab].render();
-  pages[tab].mount();
+  if (content) {
+    content.innerHTML = pages[tab].render();
+    pages[tab].mount();
+  }
+  // Update active states
   document.querySelectorAll('.tab').forEach(btn => {
     btn.classList.toggle('active', btn.dataset.tab === tab);
   });
+  document.querySelectorAll('.sidebar-item').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.tab === tab);
+  });
+  setupListeners();
 }
 
 function closeMenu() {
@@ -102,6 +174,16 @@ function setupListeners() {
   document.querySelectorAll('.tab').forEach(btn => {
     btn.addEventListener('click', () => switchTab(btn.dataset.tab));
   });
+  document.querySelectorAll('.sidebar-item').forEach(btn => {
+    btn.addEventListener('click', () => switchTab(btn.dataset.tab));
+  });
+
+  document.getElementById('sidebarLogoutBtn')?.addEventListener('click', async () => {
+    await supabase.auth.signOut();
+  });
+  document.getElementById('sidebarHelpBtn')?.addEventListener('click', () => {
+    showHowItWorksModal();
+  });
 
   document.getElementById('logoBtn')?.addEventListener('click', (e) => {
     e.stopPropagation();
@@ -114,7 +196,6 @@ function setupListeners() {
 
   setupHeaderListeners();
 
-  // Close menu on outside click
   document.addEventListener('click', (e) => {
     if (menuOpen && !e.target.closest('.header-left')) {
       closeMenu();
@@ -205,15 +286,13 @@ function showHowItWorksModal() {
             <p>Mergi la <strong>Profil → Numărul tău AiCall</strong>, alegi țara și cumperi un număr. Costul lunar (~$1.15 pentru UK) se deduce din credit.</p>
           </div>
         </div>
-
         <div class="howto-step">
           <div class="howto-num">2</div>
           <div class="howto-body">
             <h4>Clonează-ți vocea</h4>
-            <p>În tabul <strong>Vocea Mea</strong> citești un text de 2 minute. Vocea ta este clonată de AI și folosită când vorbești în alte limbi.</p>
+            <p>În tabul <strong>Vocea Mea</strong> citești un text de 1-2 minute. Vocea ta este clonată de AI și folosită când vorbești în alte limbi.</p>
           </div>
         </div>
-
         <div class="howto-step">
           <div class="howto-num">3</div>
           <div class="howto-body">
@@ -222,7 +301,6 @@ function showHowItWorksModal() {
             <p><strong>Când primești apel:</strong> AiCall detectează limba interlocutorului și o traduce în română pentru tine cu o voce expresivă.</p>
           </div>
         </div>
-
         <div class="howto-step">
           <div class="howto-num">4</div>
           <div class="howto-body">
@@ -231,15 +309,13 @@ function showHowItWorksModal() {
             <p>La 15 minute rămase primești <strong>avertisment</strong>, la 5 minute alt avertisment, iar la 0 apelul se închide automat.</p>
           </div>
         </div>
-
         <div class="howto-step">
           <div class="howto-num">5</div>
           <div class="howto-body">
             <h4>Contacte cunoscute</h4>
-            <p>În <strong>Agendă</strong> poți seta pentru fiecare contact: <strong>"Vorbim aceeași limbă"</strong> (fără traducere = mai ieftin) sau <strong>"Cu traducere → EN"</strong> (limba preferată automat).</p>
+            <p>În <strong>Agendă</strong> setezi pe fiecare contact: <strong>"Vorbim aceeași limbă"</strong> (fără traducere = mai ieftin) sau <strong>"Cu traducere → EN"</strong> (limba preferată automat).</p>
           </div>
         </div>
-
         <div class="howto-step">
           <div class="howto-num">6</div>
           <div class="howto-body">
@@ -247,7 +323,7 @@ function showHowItWorksModal() {
             <p>📞 <strong>Twilio</strong> — telefonia<br>
             🎙️ <strong>OpenAI Realtime</strong> — recunoaștere voce + auto-detect limbă<br>
             🌐 <strong>GPT-4o</strong> — traducere<br>
-            🗣️ <strong>ElevenLabs Flash + v3</strong> — voce clonată + voce expresivă</p>
+            🗣️ <strong>ElevenLabs Flash</strong> — voce clonată</p>
           </div>
         </div>
       </div>
@@ -266,19 +342,25 @@ export function renderApp() {
   menuOpen = false;
   const app = document.getElementById('app');
   app.innerHTML = `
+    ${renderSidebar()}
     ${renderHeader()}
     <main id="content" class="content">${pages[activeTab].render()}</main>
     ${renderTabBar()}
   `;
   pages[activeTab].mount();
   setupListeners();
+
+  // Sync sidebar credit with global credit state
+  if (!unsubCreditSidebar) {
+    unsubCreditSidebar = onCreditChange(() => refreshSidebarCredit());
+    fetchCredit();
+  }
 }
 
 export function getActiveTab() {
   return activeTab;
 }
 
-// Allow pages to call from contacts/history
 export function navigateAndCall(number) {
   activeTab = 'call';
   renderApp();
