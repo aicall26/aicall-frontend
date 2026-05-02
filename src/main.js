@@ -7,6 +7,55 @@ import './style.css';
 const savedTheme = localStorage.getItem('aicall-theme') || 'dark';
 document.documentElement.setAttribute('data-theme', savedTheme);
 
+// PWA install prompt - capture event-ul ca sa-l afisam intr-un banner
+let deferredInstallPrompt = null;
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  deferredInstallPrompt = e;
+  const dismissed = localStorage.getItem('aicall-pwa-install-dismissed');
+  if (!dismissed) {
+    showInstallBanner();
+  }
+});
+window.addEventListener('appinstalled', () => {
+  hideInstallBanner();
+  deferredInstallPrompt = null;
+  localStorage.setItem('aicall-pwa-install-dismissed', '1');
+});
+
+function showInstallBanner() {
+  if (document.getElementById('pwa-install-banner')) return;
+  const banner = document.createElement('div');
+  banner.id = 'pwa-install-banner';
+  banner.className = 'pwa-install-banner';
+  banner.innerHTML = `
+    <div class="pwa-install-text">
+      <strong>Instalează AiCall</strong>
+      <span>Primește apeluri direct pe telefon</span>
+    </div>
+    <button id="pwa-install-btn" class="pwa-install-btn">Instalează</button>
+    <button id="pwa-install-close" class="pwa-install-close" aria-label="Închide">×</button>
+  `;
+  document.body.appendChild(banner);
+  document.getElementById('pwa-install-btn').addEventListener('click', async () => {
+    if (!deferredInstallPrompt) return;
+    deferredInstallPrompt.prompt();
+    const result = await deferredInstallPrompt.userChoice;
+    if (result.outcome === 'accepted') {
+      localStorage.setItem('aicall-pwa-install-dismissed', '1');
+    }
+    deferredInstallPrompt = null;
+    hideInstallBanner();
+  });
+  document.getElementById('pwa-install-close').addEventListener('click', () => {
+    localStorage.setItem('aicall-pwa-install-dismissed', '1');
+    hideInstallBanner();
+  });
+}
+function hideInstallBanner() {
+  document.getElementById('pwa-install-banner')?.remove();
+}
+
 async function processEmailConfirmation() {
   const url = new URL(window.location.href);
   const hash = window.location.hash;
