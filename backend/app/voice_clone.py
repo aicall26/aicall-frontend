@@ -37,22 +37,24 @@ MODEL_MULTILINGUAL = "eleven_multilingual_v2"
 # Flash - mai rapid, latenta 75ms, pentru streaming live
 MODEL_FLASH = "eleven_flash_v2_5"
 
-# Limbi suportate cu sample text de test
+# Limbi suportate - sample text de ~10-15 sec per limba ca user-ul sa
+# auda vocea clonata pe un text mai lung, natural, in care intra mai
+# multa intonatie si emotie.
 TEST_SAMPLES = {
-    "EN": "Hello, this is a test of my cloned voice in English.",
-    "DE": "Hallo, das ist ein Test meiner geklonten Stimme auf Deutsch.",
-    "FR": "Bonjour, ceci est un test de ma voix clonée en français.",
-    "ES": "Hola, esta es una prueba de mi voz clonada en español.",
-    "IT": "Ciao, questo è un test della mia voce clonata in italiano.",
-    "PT": "Olá, este é um teste da minha voz clonada em português.",
-    "PL": "Cześć, to jest test mojego sklonowanego głosu po polsku.",
-    "NL": "Hallo, dit is een test van mijn gekloonde stem in het Nederlands.",
-    "RO": "Salut, acesta este un test al vocii mele clonate in romana.",
-    "GR": "Γεια σας, αυτή είναι μια δοκιμή της κλωνοποιημένης φωνής μου στα ελληνικά.",
-    "HU": "Helló, ez egy teszt az én klónozott hangomról magyarul.",
-    "CZ": "Ahoj, tohle je test mého klonovaného hlasu v češtině.",
-    "BG": "Здравейте, това е тест на моя клониран глас на български.",
-    "RU": "Привет, это тест моего клонированного голоса на русском.",
+    "EN": "Hello, this is my voice speaking in English. I'm testing how my cloned voice sounds when it speaks a different language. The intonation, rhythm and natural flow should still feel like me.",
+    "DE": "Hallo, das ist meine Stimme auf Deutsch. Ich teste, wie meine geklonte Stimme klingt, wenn sie eine andere Sprache spricht. Die Intonation und der natürliche Rhythmus sollten sich weiterhin nach mir anhören.",
+    "FR": "Bonjour, c'est ma voix qui parle en français. Je teste comment ma voix clonée sonne quand elle s'exprime dans une autre langue. L'intonation et le rythme devraient ressembler à ma façon naturelle de parler.",
+    "ES": "Hola, esta es mi voz hablando en español. Estoy probando cómo suena mi voz clonada cuando habla otro idioma. La entonación y el ritmo deberían seguir sintiéndose como yo.",
+    "IT": "Ciao, questa è la mia voce che parla in italiano. Sto provando come suona la mia voce clonata quando parla un'altra lingua. L'intonazione e il ritmo dovrebbero sembrare ancora me.",
+    "PT": "Olá, esta é a minha voz a falar em português. Estou a testar como soa a minha voz clonada quando fala outro idioma. A entonação e o ritmo devem continuar a soar como eu.",
+    "PL": "Cześć, to jest mój głos mówiący po polsku. Testuję, jak brzmi mój sklonowany głos, gdy mówi w innym języku. Intonacja i rytm powinny nadal brzmieć jak ja.",
+    "NL": "Hallo, dit is mijn stem die Nederlands spreekt. Ik test hoe mijn gekloonde stem klinkt wanneer ik een andere taal spreek. De intonatie en het natuurlijke ritme moeten nog steeds klinken als ik.",
+    "RO": "Salut, aceasta este vocea mea vorbind in romana. Testez cum suna vocea mea clonata atunci cand vorbeste o alta limba. Intonatia, ritmul si fluxul natural ar trebui sa para tot ale mele.",
+    "GR": "Γεια σας, αυτή είναι η φωνή μου που μιλάει ελληνικά. Δοκιμάζω πώς ακούγεται η κλωνοποιημένη φωνή μου όταν μιλάει μια άλλη γλώσσα. Η ένταση και ο ρυθμός θα πρέπει να ακούγονται ακόμα σαν εμένα.",
+    "HU": "Helló, ez az én hangom magyarul beszél. Tesztelem, hogyan szól a klónozott hangom, amikor egy másik nyelven beszél. A hanglejtésnek és a ritmusnak még mindig olyannak kell lennie, mint én.",
+    "CZ": "Ahoj, tohle je můj hlas mluvící česky. Testuji, jak zní můj klonovaný hlas, když mluví jiným jazykem. Intonace a rytmus by měly stále znít jako já.",
+    "BG": "Здравейте, това е моят глас, говорещ на български. Тествам как звучи моят клониран глас, когато говори на друг език. Интонацията и ритъмът все още трябва да звучат като мен.",
+    "RU": "Привет, это мой голос, говорящий на русском. Я тестирую, как звучит мой клонированный голос, когда говорит на другом языке. Интонация и ритм должны звучать как я.",
 }
 
 
