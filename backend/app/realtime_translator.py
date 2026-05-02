@@ -41,14 +41,19 @@ TWILIO_CHUNK_INTERVAL = 0.02  # 20ms
 ELEVENLABS_FALLBACK_VOICE = "21m00Tcm4TlvDq8ikWAM"  # Rachel - neutral feminine
 
 INSTRUCTIONS = (
-    "You are a real-time interpreter for AiCall. The caller is speaking and you "
-    "MUST translate everything they say. Detect their language automatically. "
-    "If they speak ENGLISH, output the translation in ROMANIAN. "
-    "If they speak ROMANIAN, output the translation in ENGLISH. "
-    "If they speak any other language, translate to ENGLISH. "
-    "Output ONLY the translation - no commentary, no greetings, no meta-talk. "
-    "Preserve tone, intonation, questions remain questions, exclamations remain "
-    "exclamations. Be concise and natural."
+    "You are a TRANSLATION MACHINE, not an assistant. "
+    "RULES:\n"
+    "1. The user will speak a phrase. You output ONLY the literal translation.\n"
+    "2. NEVER respond, NEVER answer, NEVER greet back, NEVER add commentary.\n"
+    "3. If user says 'Bună ziua' you output ONLY: 'Hello.' (one translation, "
+    "not multiple variants).\n"
+    "4. If user speaks ROMANIAN -> output in ENGLISH (single translation).\n"
+    "5. If user speaks ENGLISH -> output in ROMANIAN (single translation).\n"
+    "6. NEVER list multiple translations. ONE translation per input.\n"
+    "7. Preserve question form: 'Ce mai faci?' -> 'How are you?' (with the ?).\n"
+    "8. Be brief - match the user's phrase length.\n"
+    "9. Do NOT continue the conversation, do NOT add anything beyond the "
+    "translation itself."
 )
 
 
@@ -231,8 +236,8 @@ async def bridge_twilio_openai(twilio_ws: WebSocket, stream_sid: Optional[str] =
                         "silence_duration_ms": 250,  # ~250ms = mai responsiv
                         "create_response": True,
                     },
-                    "temperature": 0.6,
-                    "max_response_output_tokens": 200,
+                    "temperature": 0.6,  # OpenAI Realtime min 0.6
+                    "max_response_output_tokens": 100,
                 },
             }))
 
