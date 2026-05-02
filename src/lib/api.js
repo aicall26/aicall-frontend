@@ -2,7 +2,26 @@ import { supabase } from './supabase.js';
 
 export const API_URL = import.meta.env.VITE_API_URL || '';
 
-const DEFAULT_TIMEOUT_MS = 30000; // 30s - destul pt search Twilio cold start
+const DEFAULT_TIMEOUT_MS = 60000; // 60s - acopera Render free tier cold start (30-60s)
+const RETRY_TIMEOUT_MS = 90000; // 90s pe retry
+
+// Warmup: ping backend in background ca sa-l trezeasca daca dormea
+let warmupDone = false;
+let warmupPromise = null;
+function warmupBackend() {
+  if (warmupDone || !API_URL) return Promise.resolve();
+  if (warmupPromise) return warmupPromise;
+  warmupPromise = fetch(`${API_URL}/`, { method: 'GET' })
+    .then(() => { warmupDone = true; })
+    .catch(() => {})
+    .finally(() => { warmupPromise = null; });
+  return warmupPromise;
+}
+
+// Trigger warmup imediat la incarcarea modulului
+if (API_URL) {
+  warmupBackend();
+}
 
 async function getHeaders() {
   const { data } = await supabase.auth.getSession();
@@ -21,29 +40,58 @@ class ApiError extends Error {
   }
 }
 
+async function attemptFetch(path, options, headers, timeoutMs) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(`${API_URL}${path}`, {
+      ...options,
+      headers: { ...headers, ...(options.headers || {}) },
+      signal: controller.signal,
+    });
+    clearTimeout(timeout);
+    return { ok: true, res };
+  } catch (e) {
+    clearTimeout(timeout);
+    return { ok: false, err: e };
+  }
+}
+
 async function request(path, options = {}) {
   if (!API_URL) {
     throw new ApiError('VITE_API_URL nu este setat. Verifica configuratia Vercel.', 0);
   }
   const headers = await getHeaders();
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), options.timeout || DEFAULT_TIMEOUT_MS);
+  const userTimeout = options.timeout;
 
-  let res;
-  try {
-    res = await fetch(`${API_URL}${path}`, {
-      ...options,
-      headers: { ...headers, ...(options.headers || {}) },
-      signal: controller.signal,
-    });
-  } catch (e) {
-    clearTimeout(timeout);
-    if (e.name === 'AbortError') {
-      throw new ApiError('Timeout: serverul nu raspunde. Reincearca peste 10 secunde.', 0);
+  // Prima incercare cu timeout normal
+  let { ok, res, err } = await attemptFetch(path, options, headers, userTimeout || DEFAULT_TIMEOUT_MS);
+
+  // Retry o singura data pentru erori de retea (cold start, network blip)
+  // - AbortError = a expirat timeout-ul
+  // - TypeError "Failed to fetch" = network/CORS preflight blocked
+  // Nu retry pe metode non-idempotente (POST/PUT/PATCH/DELETE) - pot crea duplicate.
+  const method = (options.method || 'GET').toUpperCase();
+  const isIdempotent = method === 'GET' || method === 'HEAD' || method === 'OPTIONS';
+  const isNetworkError = !ok && (err.name === 'AbortError' || err.name === 'TypeError');
+
+  if (!ok && isNetworkError && isIdempotent) {
+    // Trezeste backend-ul daca a dormit, apoi retry
+    try { await warmupBackend(); } catch {}
+    const retry = await attemptFetch(path, options, headers, userTimeout || RETRY_TIMEOUT_MS);
+    if (retry.ok) {
+      ok = true; res = retry.res; err = null;
+    } else {
+      err = retry.err;
     }
-    throw new ApiError(`Eroare retea: ${e.message}. Verifica conexiunea internet.`, 0);
   }
-  clearTimeout(timeout);
+
+  if (!ok) {
+    if (err.name === 'AbortError') {
+      throw new ApiError('Serverul nu raspunde. Reincearca peste 30 secunde (poate fi in stand-by).', 0);
+    }
+    throw new ApiError(`Eroare retea: ${err.message}. Verifica conexiunea internet sau reincearca peste un minut.`, 0);
+  }
 
   if (!res.ok) {
     let body = null;
