@@ -103,6 +103,13 @@ export function muteCall(muted) {
   }
 }
 
+export function sendDigit(digit) {
+  if (!activeCall) return;
+  try { activeCall.sendDigits(String(digit)); } catch (e) {
+    console.warn('sendDigits failed:', e);
+  }
+}
+
 export async function answerIncoming(call) {
   activeCall = call;
   call.accept();

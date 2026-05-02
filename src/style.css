@@ -1718,6 +1718,33 @@ input { font-family: inherit; color: var(--text-primary); }
   border-top: 1px dashed var(--border);
 }
 
+/* DTMF keypad in apel activ */
+.dtmf-keypad-active {
+  width: 100%; max-width: 320px;
+  margin: 16px auto 0;
+  display: flex; flex-direction: column; align-items: center; gap: 12px;
+  animation: dtmf-slide-up 0.2s ease-out;
+}
+@keyframes dtmf-slide-up {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.dtmf-display {
+  width: 100%;
+  min-height: 36px;
+  padding: 8px 12px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-family: 'JetBrains Mono', 'Courier New', monospace;
+  font-size: 18px; font-weight: 600;
+  text-align: center;
+  letter-spacing: 4px;
+  color: var(--accent);
+}
+.dtmf-key { width: 60px; height: 60px; }
+.dtmf-key .key-num { font-size: 20px; }
+
 /* PWA install banner */
 .pwa-install-banner {
   position: fixed;

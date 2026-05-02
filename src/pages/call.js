@@ -17,6 +17,8 @@ let callState = {
   contactInfo: null,
   useTranslation: true,
   warningModal: null,
+  dtmfOpen: false,
+  dtmfTyped: '',
 };
 let targetLang = localStorage.getItem('aicall-target-lang') || 'EN';
 let ringtoneCtx = null;
@@ -166,15 +168,35 @@ function renderActiveCall() {
         </svg>
         <span>${callState.muted ? 'Silențios' : 'Microfon'}</span>
       </button>
-      <button class="control-btn ${callState.speaker ? 'active' : ''}" id="speakerBtn">
+      <button class="control-btn ${callState.dtmfOpen ? 'active' : ''}" id="dtmfBtn">
         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
-          <path d="M15.54 8.46a5 5 0 010 7.07"/>
-          ${callState.speaker ? '<path d="M19.07 4.93a10 10 0 010 14.14"/>' : ''}
+          <rect x="3" y="3" width="18" height="18" rx="2"/>
+          <circle cx="8" cy="8" r="0.8" fill="currentColor"/>
+          <circle cx="12" cy="8" r="0.8" fill="currentColor"/>
+          <circle cx="16" cy="8" r="0.8" fill="currentColor"/>
+          <circle cx="8" cy="12" r="0.8" fill="currentColor"/>
+          <circle cx="12" cy="12" r="0.8" fill="currentColor"/>
+          <circle cx="16" cy="12" r="0.8" fill="currentColor"/>
+          <circle cx="8" cy="16" r="0.8" fill="currentColor"/>
+          <circle cx="12" cy="16" r="0.8" fill="currentColor"/>
+          <circle cx="16" cy="16" r="0.8" fill="currentColor"/>
         </svg>
-        <span>Difuzor</span>
+        <span>Tastatură</span>
       </button>
     </div>
+
+    ${callState.dtmfOpen ? `
+    <div class="dtmf-keypad-active">
+      <div class="dtmf-display">${callState.dtmfTyped || ' '}</div>
+      <div class="dialpad">
+        ${dialpadKeys.map(row => `<div class="dialpad-row">
+          ${[0, 2, 4].map(i => `<button class="dialpad-key dtmf-key" data-dtmf="${row[i]}">
+            <span class="key-num">${row[i]}</span>
+            ${row[i + 1] ? `<span class="key-letters">${row[i + 1]}</span>` : ''}
+          </button>`).join('')}
+        </div>`).join('')}
+      </div>
+    </div>` : ''}
 
     <button class="hangup-btn" id="hangupBtn">
       <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5">
@@ -400,11 +422,24 @@ export function mountCall() {
       mountCall();
     });
 
-    document.getElementById('speakerBtn')?.addEventListener('click', () => {
-      callState.speaker = !callState.speaker;
+    document.getElementById('dtmfBtn')?.addEventListener('click', () => {
+      callState.dtmfOpen = !callState.dtmfOpen;
+      if (!callState.dtmfOpen) callState.dtmfTyped = '';
       const content = document.getElementById('content');
       content.innerHTML = renderActiveCall();
       mountCall();
+    });
+
+    document.querySelectorAll('.dtmf-key').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const d = btn.dataset.dtmf;
+        if (!d) return;
+        twilioVoice.sendDigit(d);
+        callState.dtmfTyped = (callState.dtmfTyped || '') + d;
+        const disp = document.querySelector('.dtmf-display');
+        if (disp) disp.textContent = callState.dtmfTyped || ' ';
+        if (navigator.vibrate) try { navigator.vibrate(20); } catch {}
+      });
     });
 
     document.getElementById('hangupBtn')?.addEventListener('click', () => {
