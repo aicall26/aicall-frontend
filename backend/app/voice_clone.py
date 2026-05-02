@@ -80,12 +80,16 @@ async def clone_voice(
     sb = supabase_admin()
 
     # Citesc voice_id curent (daca exista, il sterg dupa upload reusit)
-    user_res = sb.table("users").select("voice_id, full_name, email").eq("id", user_id).maybe_single().execute()
-    if not user_res or not user_res.data:
+    try:
+        user_res = sb.table("users").select("voice_id, full_name, email").eq("id", user_id).limit(1).execute()
+    except Exception as e:
+        raise ValueError(f"DB error: {e}")
+    if not user_res or not user_res.data or len(user_res.data) == 0:
         raise ValueError("User not found")
 
-    old_voice_id = user_res.data.get("voice_id")
-    user_label = user_res.data.get("full_name") or user_res.data.get("email") or user_id[:8]
+    u0 = user_res.data[0]
+    old_voice_id = u0.get("voice_id")
+    user_label = u0.get("full_name") or u0.get("email") or user_id[:8]
 
     # Numele clonei trebuie unic per user (stergem oldul dupa)
     if not voice_name:
@@ -204,11 +208,14 @@ async def _delete_elevenlabs_voice(voice_id: str) -> None:
 async def delete_user_voice(user_id: str) -> dict:
     """Sterge vocea de la ElevenLabs si curata users.voice_id."""
     sb = supabase_admin()
-    user_res = sb.table("users").select("voice_id").eq("id", user_id).maybe_single().execute()
-    if not user_res or not user_res.data:
+    try:
+        user_res = sb.table("users").select("voice_id").eq("id", user_id).limit(1).execute()
+    except Exception as e:
+        raise ValueError(f"DB error: {e}")
+    if not user_res or not user_res.data or len(user_res.data) == 0:
         raise ValueError("User not found")
 
-    voice_id = user_res.data.get("voice_id")
+    voice_id = user_res.data[0].get("voice_id")
     if not voice_id:
         return {"deleted": False, "message": "Nu ai voce clonata"}
 
@@ -240,10 +247,13 @@ async def synthesize_test(
         raise RuntimeError("ElevenLabs not configured")
 
     sb = supabase_admin()
-    res = sb.table("users").select("voice_id").eq("id", user_id).maybe_single().execute()
-    if not res or not res.data or not res.data.get("voice_id"):
+    try:
+        res = sb.table("users").select("voice_id").eq("id", user_id).limit(1).execute()
+    except Exception as e:
+        raise ValueError(f"DB error: {e}")
+    if not res or not res.data or len(res.data) == 0 or not res.data[0].get("voice_id"):
         raise ValueError("Trebuie sa-ti clonezi vocea mai intai")
-    voice_id = res.data["voice_id"]
+    voice_id = res.data[0]["voice_id"]
 
     if not text:
         text = TEST_SAMPLES.get(language, TEST_SAMPLES["EN"])

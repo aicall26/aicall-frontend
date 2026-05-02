@@ -147,12 +147,15 @@ def buy_number(user_id: str, phone_number: str, country: str, number_type: str) 
     sb = supabase_admin()
 
     # 1. Verific user + credit
-    user_res = sb.table("users").select(
-        "credit_cents, twilio_phone_number"
-    ).eq("id", user_id).maybe_single().execute()
-    if not user_res or not user_res.data:
+    try:
+        user_res = sb.table("users").select(
+            "credit_cents, twilio_phone_number"
+        ).eq("id", user_id).limit(1).execute()
+    except Exception as e:
+        raise ValueError(f"DB error: {e}")
+    if not user_res or not user_res.data or len(user_res.data) == 0:
         raise ValueError("User not found")
-    u = user_res.data
+    u = user_res.data[0]
 
     if u.get("twilio_phone_number"):
         raise ValueError("User already has a phone number. Release the existing one first.")
@@ -226,14 +229,17 @@ def buy_number(user_id: str, phone_number: str, country: str, number_type: str) 
 def release_number(user_id: str) -> dict:
     """Elibereaza numarul user-ului. Twilio NU returneaza banii pe luna in curs."""
     sb = supabase_admin()
-    user_res = sb.table("users").select(
-        "twilio_phone_sid, twilio_phone_number"
-    ).eq("id", user_id).maybe_single().execute()
-    if not user_res or not user_res.data:
+    try:
+        user_res = sb.table("users").select(
+            "twilio_phone_sid, twilio_phone_number"
+        ).eq("id", user_id).limit(1).execute()
+    except Exception as e:
+        raise ValueError(f"DB error: {e}")
+    if not user_res or not user_res.data or len(user_res.data) == 0:
         raise ValueError("User not found")
 
-    sid = user_res.data.get("twilio_phone_sid")
-    number = user_res.data.get("twilio_phone_number")
+    sid = user_res.data[0].get("twilio_phone_sid")
+    number = user_res.data[0].get("twilio_phone_number")
     if not sid:
         raise ValueError("User does not have a phone number")
 

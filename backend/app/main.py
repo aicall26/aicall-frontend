@@ -116,9 +116,9 @@ async def twilio_voice_outbound(request: Request):
             sb = supabase_admin()
             user_res = sb.table("users").select(
                 "phone_number, phone_verified, twilio_phone_number"
-            ).eq("id", user_id).maybe_single().execute()
-            if user_res and user_res.data:
-                u = user_res.data
+            ).eq("id", user_id).limit(1).execute()
+            if user_res and user_res.data and len(user_res.data) > 0:
+                u = user_res.data[0]
                 # Preferam numarul personal verificat (cel pe care clientul deja il stie)
                 if u.get("phone_verified") and u.get("phone_number"):
                     caller_id = u["phone_number"]
@@ -205,12 +205,16 @@ def call_tick(req: CallTickRequest, user_id: str = Depends(get_current_user_id))
     Returneaza credit ramas + flag-uri de avertisment.
     """
     sb = supabase_admin()
-    sess = sb.table("call_sessions").select("user_id, ended_at").eq("id", req.session_id).maybe_single().execute()
-    if not sess or not sess.data:
+    try:
+        sess = sb.table("call_sessions").select("user_id, ended_at").eq("id", req.session_id).limit(1).execute()
+    except Exception as e:
+        raise HTTPException(500, f"DB error: {e}")
+    if not sess or not sess.data or len(sess.data) == 0:
         raise HTTPException(404, "Session not found")
-    if sess.data["user_id"] != user_id:
+    s0 = sess.data[0]
+    if s0["user_id"] != user_id:
         raise HTTPException(403, "Not your session")
-    if sess.data["ended_at"]:
+    if s0["ended_at"]:
         raise HTTPException(400, "Session already ended")
 
     if req.seconds < 1 or req.seconds > 60:
@@ -230,13 +234,15 @@ class CallEndRequest(BaseModel):
 @app.post("/api/calls/end")
 def call_end(req: CallEndRequest, user_id: str = Depends(get_current_user_id)):
     sb = supabase_admin()
-    sess = sb.table("call_sessions").select("*").eq("id", req.session_id).maybe_single().execute()
-    if not sess or not sess.data:
+    try:
+        sess = sb.table("call_sessions").select("*").eq("id", req.session_id).limit(1).execute()
+    except Exception as e:
+        raise HTTPException(500, f"DB error: {e}")
+    if not sess or not sess.data or len(sess.data) == 0:
         raise HTTPException(404, "Session not found")
-    if sess.data["user_id"] != user_id:
+    s = sess.data[0]
+    if s["user_id"] != user_id:
         raise HTTPException(403, "Not your session")
-
-    s = sess.data
 
     # Deduce ultimele secunde
     if req.final_seconds > 0 and not s.get("ended_at"):
@@ -364,8 +370,13 @@ async def voice_test_tts(
 def voice_info(user_id: str = Depends(get_current_user_id)):
     """Info despre vocea curenta clonata."""
     sb = supabase_admin()
-    res = sb.table("users").select("voice_id").eq("id", user_id).maybe_single().execute()
-    voice_id = res.data.get("voice_id") if res and res.data else None
+    voice_id = None
+    try:
+        res = sb.table("users").select("voice_id").eq("id", user_id).limit(1).execute()
+        if res and res.data and len(res.data) > 0:
+            voice_id = res.data[0].get("voice_id")
+    except Exception as e:
+        log.warning(f"voice_info query failed: {e}")
     return {
         "has_voice": bool(voice_id),
         "voice_id": voice_id,

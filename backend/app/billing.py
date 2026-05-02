@@ -20,24 +20,30 @@ COST_PER_SECOND_MILLICENTS = config.COST_PER_MINUTE_CENTS * 1000 // 60
 def get_user_credit(user_id: str) -> int:
     """Returneaza credit ramas in cents."""
     sb = supabase_admin()
-    res = sb.table("users").select("credit_cents").eq("id", user_id).maybe_single().execute()
-    if not res or not res.data:
+    try:
+        res = sb.table("users").select("credit_cents").eq("id", user_id).limit(1).execute()
+    except Exception:
         return 0
-    return res.data.get("credit_cents", 0)
+    if not res or not res.data or len(res.data) == 0:
+        return 0
+    return res.data[0].get("credit_cents", 0)
 
 
 def can_start_call(user_id: str, with_translation: bool = True) -> tuple[bool, str]:
     """Verifica daca user-ul poate porni apel. Returneaza (ok, motiv)."""
     sb = supabase_admin()
-    res = sb.table("users").select(
-        "credit_cents, max_minutes_per_day, max_minutes_per_month, "
-        "total_minutes_today, total_minutes_this_month, last_call_date"
-    ).eq("id", user_id).maybe_single().execute()
+    try:
+        res = sb.table("users").select(
+            "credit_cents, max_minutes_per_day, max_minutes_per_month, "
+            "total_minutes_today, total_minutes_this_month, last_call_date"
+        ).eq("id", user_id).limit(1).execute()
+    except Exception as e:
+        return False, f"Eroare DB: {e}"
 
-    if not res or not res.data:
+    if not res or not res.data or len(res.data) == 0:
         return False, "Utilizator inexistent"
 
-    u = res.data
+    u = res.data[0]
 
     # Reset zilnic daca e zi noua
     today = datetime.now(timezone.utc).date()
@@ -76,10 +82,13 @@ def deduct_seconds(session_id: str, seconds: int) -> dict:
     sb = supabase_admin()
 
     # Citeste sesiune
-    sess_res = sb.table("call_sessions").select("*").eq("id", session_id).maybe_single().execute()
-    if not sess_res or not sess_res.data:
+    try:
+        sess_res = sb.table("call_sessions").select("*").eq("id", session_id).limit(1).execute()
+    except Exception as e:
+        return {"error": f"DB error: {e}"}
+    if not sess_res or not sess_res.data or len(sess_res.data) == 0:
         return {"error": "Session not found"}
-    sess = sess_res.data
+    sess = sess_res.data[0]
 
     if sess.get("ended_at"):
         return {"error": "Session already ended"}
@@ -94,10 +103,13 @@ def deduct_seconds(session_id: str, seconds: int) -> dict:
     cost_cents = (millicents + 999) // 1000  # rotunjire in sus la cents
 
     # Citeste user pt credit
-    user_res = sb.table("users").select("credit_cents, total_minutes_today, total_minutes_this_month").eq("id", user_id).maybe_single().execute()
-    if not user_res or not user_res.data:
+    try:
+        user_res = sb.table("users").select("credit_cents, total_minutes_today, total_minutes_this_month").eq("id", user_id).limit(1).execute()
+    except Exception as e:
+        return {"error": f"DB error: {e}"}
+    if not user_res or not user_res.data or len(user_res.data) == 0:
         return {"error": "User not found"}
-    u = user_res.data
+    u = user_res.data[0]
 
     new_credit = max(0, u["credit_cents"] - cost_cents)
     actual_deducted = u["credit_cents"] - new_credit
@@ -157,11 +169,14 @@ def topup_credit(user_id: str, amount_cents: int, external_ref: Optional[str] = 
         raise ValueError("Amount must be positive")
 
     sb = supabase_admin()
-    user_res = sb.table("users").select("credit_cents").eq("id", user_id).maybe_single().execute()
-    if not user_res or not user_res.data:
+    try:
+        user_res = sb.table("users").select("credit_cents").eq("id", user_id).limit(1).execute()
+    except Exception as e:
+        raise ValueError(f"DB error: {e}")
+    if not user_res or not user_res.data or len(user_res.data) == 0:
         raise ValueError("User not found")
 
-    new_balance = user_res.data["credit_cents"] + amount_cents
+    new_balance = user_res.data[0]["credit_cents"] + amount_cents
     sb.table("users").update({
         "credit_cents": new_balance,
         "updated_at": datetime.now(timezone.utc).isoformat(),
