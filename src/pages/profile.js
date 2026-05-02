@@ -1,10 +1,14 @@
 import { supabase } from '../lib/supabase.js';
+import { api } from '../lib/api.js';
+import { fetchCredit } from '../lib/credit.js';
 
 let user = null;
 let profile = null;
 let editing = false;
 let changingPassword = false;
 let passwordMsg = null;
+let topupBusy = false;
+let topupMsg = null;
 
 export function renderProfile() {
   if (!profile) {
@@ -90,6 +94,17 @@ export function renderProfile() {
         <button class="btn-small btn-ghost" id="toggleThemeProfile">
           ${document.documentElement.getAttribute('data-theme') === 'dark' ? 'Light' : 'Dark'}
         </button>
+      </div>
+    </div>
+
+    <div class="profile-card" style="border:1px dashed var(--warning);">
+      <h3 class="card-title" style="color:var(--warning);">⚙️ Test (temporar)</h3>
+      <p class="phone-help" style="margin-top:0">Buton pentru testare - adaugă credit fără plată reală. Va dispărea când integrăm Stripe.</p>
+      ${topupMsg ? `<div class="profile-msg ${topupMsg.type}">${topupMsg.text}</div>` : ''}
+      <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:8px;">
+        <button class="btn-small btn-accent" id="topup5" ${topupBusy ? 'disabled' : ''}>+$5</button>
+        <button class="btn-small btn-accent" id="topup20" ${topupBusy ? 'disabled' : ''}>+$20</button>
+        <button class="btn-small btn-accent" id="topup100" ${topupBusy ? 'disabled' : ''}>+$100</button>
       </div>
     </div>
 
@@ -185,6 +200,27 @@ export async function mountProfile() {
     btn.querySelector('.eye-open').style.display = isHidden ? 'none' : 'block';
     btn.querySelector('.eye-closed').style.display = isHidden ? 'block' : 'none';
   });
+
+  // Test topup (temporar)
+  const doTopup = async (amountCents) => {
+    if (topupBusy) return;
+    topupBusy = true;
+    topupMsg = null;
+    rerender();
+    try {
+      const res = await api.post('/api/credit/topup-manual', { amount_cents: amountCents });
+      topupMsg = { type: 'success', text: `Credit adăugat. Total acum: $${(res.credit_cents / 100).toFixed(2)}` };
+      await fetchCredit();
+    } catch (e) {
+      topupMsg = { type: 'error', text: 'Eroare: ' + (e.message || 'esuat') };
+    } finally {
+      topupBusy = false;
+      rerender();
+    }
+  };
+  document.getElementById('topup5')?.addEventListener('click', () => doTopup(500));
+  document.getElementById('topup20')?.addEventListener('click', () => doTopup(2000));
+  document.getElementById('topup100')?.addEventListener('click', () => doTopup(10000));
 
   document.getElementById('toggleThemeProfile')?.addEventListener('click', () => {
     const html = document.documentElement;
