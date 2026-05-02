@@ -207,67 +207,53 @@ function renderHasNumber() {
         ${next ? `<div class="mynum-meta-small">Următoarea reînnoire: ${next}</div>` : ''}
       </div>
 
-      <h2 class="mynum-section-title">Activează redirecționarea</h2>
-      <p class="mynum-help">Cei care te sună folosesc <strong>numărul tău real</strong>. SIM-ul tău redirectează apelul către numărul AiCall, iar tu primești apelul aici cu traducere.</p>
+      <h2 class="mynum-section-title">Redirecționare apeluri</h2>
+      <p class="mynum-help">Cei care te sună folosesc numărul tău real. SIM-ul tău redirectează apelul către numărul AiCall, iar tu îl primești aici cu traducere.</p>
 
       <div class="mynum-mode-tabs">
         <button class="mynum-mode-tab ${forwardMode === 'always' ? 'active' : ''}" data-mode="always">
           <div class="mynum-mode-title">📞 Toate apelurile</div>
-          <div class="mynum-mode-desc">Mereu vin în AiCall cu traducere</div>
+          <div class="mynum-mode-desc">Toate vin în AiCall</div>
         </button>
         <button class="mynum-mode-tab ${forwardMode === 'unanswered' ? 'active' : ''}" data-mode="unanswered">
           <div class="mynum-mode-title">⏱️ Doar dacă nu răspund</div>
-          <div class="mynum-mode-desc">Sună întâi telefonul tău, apoi AiCall</div>
+          <div class="mynum-mode-desc">Sună întâi telefonul tău</div>
         </button>
       </div>
 
-      <div class="mynum-howto">
-        <div class="mynum-step">
-          <div class="mynum-step-circle">1</div>
-          <div class="mynum-step-body">
-            <h4>Pe telefonul tău (cel cu numărul real), formează codul:</h4>
-            <div class="mynum-code-row">
-              <code class="mynum-code">${ussd}</code>
-              <button class="btn-icon mynum-copy-btn" data-copy="${ussd}" title="Copiază">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
-              </button>
-              <a class="btn-icon mynum-call-link" href="${ussdHref(ussd)}" title="Sună codul">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6A19.79 19.79 0 012.12 4.18 2 2 0 014.11 2h3a2 2 0 012 1.72c.127.96.362 1.903.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.338 1.85.573 2.81.7A2 2 0 0122 16.92z"/></svg>
-              </a>
-            </div>
-            <small class="mynum-tiny-help">Apasă <strong>Copiază</strong>, deschide aplicația de telefon și lipește codul, apoi sună. Sau dă clic pe butonul verde pe telefon.</small>
-          </div>
+      <div class="mynum-action-card mynum-action-on">
+        <div class="mynum-action-header">
+          <span class="mynum-action-emoji">🟢</span>
+          <h3>PORNEȘTE redirecționarea</h3>
         </div>
-        <div class="mynum-step">
-          <div class="mynum-step-circle">2</div>
-          <div class="mynum-step-body">
-            <h4>Confirmă</h4>
-            <p>Operatorul îți va trimite un mesaj de confirmare („Redirecționare activată"). Gata.</p>
-          </div>
-        </div>
-        <div class="mynum-step">
-          <div class="mynum-step-circle">3</div>
-          <div class="mynum-step-body">
-            <h4>Testează</h4>
-            <p>Roagă pe cineva să te sune pe numărul tău real. Apelul va apărea în AiCall.</p>
-            <div class="mynum-warning-mini">⚠️ Ține aplicația AiCall deschisă în browser ca să primești apelurile cu traducere.</div>
-          </div>
-        </div>
+        <div class="mynum-code-display">${ussd}</div>
+        <a class="mynum-big-call-btn mynum-big-call-on" href="${ussdHref(ussd)}">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6A19.79 19.79 0 012.12 4.18 2 2 0 014.11 2h3a2 2 0 012 1.72c.127.96.362 1.903.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.338 1.85.573 2.81.7A2 2 0 0122 16.92z"/></svg>
+          <span>Sună codul de pe telefonul tău</span>
+        </a>
+        <button class="mynum-copy-text-btn mynum-copy-btn" data-copy="${ussd}">
+          📋 Copiază codul
+        </button>
+        <small class="mynum-tiny-help">Apasă butonul mare ⬆ direct pe telefonul tău cu SIM-ul tău. Operatorul îți va trimite un SMS de confirmare.</small>
       </div>
 
-      <div class="mynum-disable-card">
-        <h4>Vrei să oprești redirecționarea?</h4>
-        <div class="mynum-code-row">
-          <code class="mynum-code">${ussdDisable()}</code>
-          <button class="btn-icon mynum-copy-btn" data-copy="${ussdDisable()}" title="Copiază">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
-          </button>
-          <a class="btn-icon mynum-call-link" href="${ussdHref(ussdDisable())}" title="Sună codul">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6A19.79 19.79 0 012.12 4.18 2 2 0 014.11 2h3a2 2 0 012 1.72c.127.96.362 1.903.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.338 1.85.573 2.81.7A2 2 0 0122 16.92z"/></svg>
-          </a>
+      <div class="mynum-action-card mynum-action-off">
+        <div class="mynum-action-header">
+          <span class="mynum-action-emoji">🔴</span>
+          <h3>OPREȘTE redirecționarea</h3>
         </div>
-        <small class="mynum-tiny-help">Formează acest cod pe telefonul tău real ca să dezactivezi redirecționarea.</small>
+        <div class="mynum-code-display">${ussdDisable()}</div>
+        <a class="mynum-big-call-btn mynum-big-call-off" href="${ussdHref(ussdDisable())}">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6A19.79 19.79 0 012.12 4.18 2 2 0 014.11 2h3a2 2 0 012 1.72c.127.96.362 1.903.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.338 1.85.573 2.81.7A2 2 0 0122 16.92z"/></svg>
+          <span>Sună codul de oprire</span>
+        </a>
+        <button class="mynum-copy-text-btn mynum-copy-btn" data-copy="${ussdDisable()}">
+          📋 Copiază codul
+        </button>
+        <small class="mynum-tiny-help">Dezactivează redirecționarea. Apelurile vor reveni direct pe telefonul tău fără traducere.</small>
       </div>
+
+      <div class="mynum-warning-mini" style="margin-top: 4px;">⚠️ Pentru a primi apeluri cu traducere, ține aplicația AiCall deschisă în browser.</div>
 
       <button class="btn-danger-outline mynum-release-btn" id="releaseNumberBtn">
         Renunță la număr
