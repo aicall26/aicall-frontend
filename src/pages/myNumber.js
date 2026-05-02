@@ -29,12 +29,6 @@ const COUNTRY_OPTIONS = [
   { code: 'AU', label: '🇦🇺 Australia', group: 'Altele' },
 ];
 
-const TYPE_OPTIONS = [
-  { code: 'local', label: 'Local (fix)' },
-  { code: 'mobile', label: 'Mobil' },
-  { code: 'tollfree', label: 'Toll-free' },
-];
-
 let myNumber = null;
 let loading = true;
 let loadError = null;
@@ -45,6 +39,7 @@ let shop = {
   searchResults: null,
   searchError: null,
   searchCountry: 'GB',
+  // Tipul e fix 'local' - cel mai ieftin si universal acceptat. Nu expunem in UI.
   searchType: 'local',
   buying: false,
   buyError: null,
@@ -144,23 +139,15 @@ function renderShop() {
       <p class="mynum-help">Alege țara în care locuiește persoana care primește apelurile (ex: UK pentru cineva în Anglia).</p>
 
       <div class="mynum-search-card">
-        <div class="phone-search-row">
-          <div class="phone-search-field">
-            <label>Țară</label>
-            <select id="searchCountry" class="form-input">
-              ${Object.entries(groups).map(([group, items]) =>
-                `<optgroup label="${group}">
-                  ${items.map(c => `<option value="${c.code}" ${c.code === shop.searchCountry ? 'selected' : ''}>${c.label}</option>`).join('')}
-                </optgroup>`
-              ).join('')}
-            </select>
-          </div>
-          <div class="phone-search-field">
-            <label>Tip</label>
-            <select id="searchType" class="form-input">
-              ${TYPE_OPTIONS.map(t => `<option value="${t.code}" ${t.code === shop.searchType ? 'selected' : ''}>${t.label}</option>`).join('')}
-            </select>
-          </div>
+        <div class="phone-search-field">
+          <label>Țară</label>
+          <select id="searchCountry" class="form-input">
+            ${Object.entries(groups).map(([group, items]) =>
+              `<optgroup label="${group}">
+                ${items.map(c => `<option value="${c.code}" ${c.code === shop.searchCountry ? 'selected' : ''}>${c.label}</option>`).join('')}
+              </optgroup>`
+            ).join('')}
+          </select>
         </div>
 
         <button class="btn-primary" id="searchNumbersBtn" ${shop.searching ? 'disabled' : ''}>
@@ -179,7 +166,7 @@ function renderShop() {
               <div class="mynum-result-info">
                 <div class="mynum-result-number">${n.phone_number}</div>
                 <div class="mynum-result-meta">
-                  ${n.locality ? n.locality + ' · ' : ''}${n.country} · ${n.type}
+                  ${n.locality ? n.locality + ' · ' : ''}${n.country}
                 </div>
               </div>
               <div class="mynum-result-price-col">
@@ -216,7 +203,7 @@ function renderHasNumber() {
       <div class="mynum-card-hero">
         <div class="mynum-tag">NUMĂRUL TĂU AICALL</div>
         <div class="mynum-big-number">${num}</div>
-        <div class="mynum-meta">${country} · ${myNumber.twilio_phone_type} · $${monthly}/lună</div>
+        <div class="mynum-meta">${country} · $${monthly}/lună</div>
         ${next ? `<div class="mynum-meta-small">Următoarea reînnoire: ${next}</div>` : ''}
       </div>
 
@@ -334,9 +321,6 @@ export async function mountMyNumber() {
 
   document.getElementById('searchCountry')?.addEventListener('change', (e) => {
     shop.searchCountry = e.target.value;
-  });
-  document.getElementById('searchType')?.addEventListener('change', (e) => {
-    shop.searchType = e.target.value;
   });
 
   document.getElementById('searchNumbersBtn')?.addEventListener('click', async () => {
