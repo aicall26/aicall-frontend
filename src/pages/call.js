@@ -17,9 +17,6 @@ let callState = {
   contactInfo: null,
   useTranslation: true,
   warningModal: null,
-  hasAiCallNumber: null, // null=loading, true=ok, false=missing
-  hasVoiceClone: null,
-  hasPersonalVerified: null,
 };
 let targetLang = localStorage.getItem('aicall-target-lang') || 'EN';
 let ringtoneCtx = null;
@@ -56,22 +53,6 @@ function backendAvailable() {
   return !!import.meta.env.VITE_API_URL;
 }
 
-function renderSetupChecklist() {
-  // Pagina Suna e curata: dialpad + credit. Pentru setup numar/voce ->
-  // user merge la Profil (in sidebar/tabbar). Mai mic mesaj informativ
-  // doar daca e prima oara fara nimic configurat.
-  if (callState.hasAiCallNumber === null) return '';
-  const hasAnyNumber = callState.hasAiCallNumber || callState.hasPersonalVerified;
-  if (hasAnyNumber) return '';
-  return `
-    <div class="setup-hint">
-      <span class="setup-hint-icon">ℹ️</span>
-      <span class="setup-hint-text">
-        Pentru a suna, configurează un număr în <button class="link-btn setup-go-profile" type="button">Profil</button>
-      </span>
-    </div>`;
-}
-
 function renderCreditBar() {
   const c = getCachedCredit();
   if (!c) return '';
@@ -91,7 +72,6 @@ function renderDialpad() {
   return `
   <div class="call-page">
     ${renderCreditBar()}
-    ${renderSetupChecklist()}
 
     <div class="lang-selector">
       <label class="lang-label">Limba de traducere:</label>
@@ -279,45 +259,12 @@ export function mountCall() {
     fetchCredit();
   }
 
-  // Fetch setup status (numar AiCall + voce clonata + numar personal verificat)
-  if (callState.status === 'idle' && backendAvailable()) {
-    Promise.all([
-      api.get('/api/twilio/numbers/mine').catch(() => ({ number: null })),
-      api.get('/api/voice/info').catch(() => ({ has_voice: false })),
-      api.get('/api/twilio/personal/check').catch(() => ({ verified: false })),
-    ]).then(([numRes, voiceRes, personalRes]) => {
-      const hadNumber = callState.hasAiCallNumber;
-      const hadVoice = callState.hasVoiceClone;
-      const hadPersonal = callState.hasPersonalVerified;
-      callState.hasAiCallNumber = !!numRes?.number;
-      callState.hasVoiceClone = !!voiceRes?.has_voice;
-      callState.hasPersonalVerified = !!personalRes?.verified;
-      if (callState.status === 'idle' &&
-          (hadNumber !== callState.hasAiCallNumber ||
-           hadVoice !== callState.hasVoiceClone ||
-           hadPersonal !== callState.hasPersonalVerified)) {
-        const content = document.getElementById('content');
-        if (content) {
-          content.innerHTML = renderDialpad();
-          mountCall();
-        }
-      }
-    });
-  }
-
   // Init Twilio Device in background (no-op daca lipseste backend)
   if (backendAvailable()) {
     twilioVoice.setupDevice().catch((e) => {
       console.warn('Twilio Device setup failed:', e);
     });
   }
-
-  // Hint -> du-te la Profil
-  document.querySelector('.setup-go-profile')?.addEventListener('click', () => {
-    const tab = document.querySelector('.tab[data-tab="profile"]')
-              || document.querySelector('.sidebar-item[data-tab="profile"]');
-    if (tab) tab.click();
-  });
 
   if (callState.status === 'idle') {
     document.querySelectorAll('.lang-chip').forEach(chip => {
