@@ -1,5 +1,5 @@
 import { supabase } from '../lib/supabase.js';
-import { api } from '../lib/api.js';
+import { api, HAS_BACKEND } from '../lib/api.js';
 import * as twilioVoice from '../lib/twilioVoice.js';
 import { startBilling, stopBilling } from '../lib/billingTick.js';
 import { fetchCredit, getCachedCredit, formatCredit, formatMinutes, onCreditChange } from '../lib/credit.js';
@@ -50,7 +50,7 @@ function sanitizePhone(val) {
 }
 
 function backendAvailable() {
-  return !!import.meta.env.VITE_API_URL;
+  return HAS_BACKEND;
 }
 
 function renderCreditBar() {

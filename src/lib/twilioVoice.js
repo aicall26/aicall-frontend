@@ -9,7 +9,7 @@
  * Daca backend-ul/Twilio nu e configurat, isAvailable() returneaza false
  * si pagina call.js cade pe simulare.
  */
-import { api } from './api.js';
+import { api, HAS_BACKEND } from './api.js';
 
 let Device = null;
 let device = null;
@@ -38,7 +38,7 @@ export async function setupDevice() {
   setupPromise = (async () => {
     const SDK = await loadSDK();
     if (!SDK) return null;
-    if (!import.meta.env.VITE_API_URL) return null;
+    if (!HAS_BACKEND) return null;
 
     try {
       const token = await fetchToken();

@@ -10,7 +10,7 @@
  * 6. Re-record optional
  */
 import { supabase } from '../lib/supabase.js';
-import { api, API_URL } from '../lib/api.js';
+import { api, apiUrl, HAS_BACKEND } from '../lib/api.js';
 
 let state = {
   status: 'loading',  // 'loading' | 'idle' | 'recording' | 'preview' | 'uploading' | 'ready' | 'testing'
@@ -494,8 +494,8 @@ async function stopRecording() {
 async function uploadVoiceToBackend() {
   if (!state.audioBlob) return;
 
-  if (!API_URL) {
-    state.errorMsg = 'Backend nu este configurat. Lipsește VITE_API_URL.';
+  if (!HAS_BACKEND) {
+    state.errorMsg = 'Backend nu este configurat.';
     rerender();
     return;
   }
@@ -524,7 +524,7 @@ async function uploadVoiceToBackend() {
     const { data: { session } } = await supabase.auth.getSession();
     const token = session?.access_token;
 
-    const res = await fetch(`${API_URL}/api/voice/clone`, {
+    const res = await fetch(`${apiUrl('/api/voice/clone')}`, {
       method: 'POST',
       headers: { 'Authorization': `Bearer ${token}` },
       body: formData,
@@ -569,7 +569,7 @@ async function testVoiceInLanguage(lang) {
   try {
     const { data: { session } } = await supabase.auth.getSession();
     const token = session?.access_token;
-    const res = await fetch(`${API_URL}/api/voice/test-tts`, {
+    const res = await fetch(`${apiUrl('/api/voice/test-tts')}`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${token}`,

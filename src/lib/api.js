@@ -1,6 +1,21 @@
 import { supabase } from './supabase.js';
 
-export const API_URL = import.meta.env.VITE_API_URL || '';
+// Pe Vercel productie folosim rewrite-uri din vercel.json (same-origin → no CORS).
+// Local sau alt host: folosim VITE_API_URL direct (cu CORS pe backend).
+const isVercelProd =
+  typeof window !== 'undefined' &&
+  /\.vercel\.app$/i.test(window.location.hostname || '');
+
+export const API_URL = isVercelProd ? '' : (import.meta.env.VITE_API_URL || '');
+
+// True daca avem o config valida pentru backend (rewrite vercel sau VITE_API_URL).
+export const HAS_BACKEND = isVercelProd || !!import.meta.env.VITE_API_URL;
+
+// Construieste URL absolut pentru un path /api/...
+export function apiUrl(path) {
+  if (API_URL) return `${API_URL}${path}`;
+  return path; // pe Vercel, path-ul same-origin e rewrite catre backend
+}
 
 const DEFAULT_TIMEOUT_MS = 60000; // 60s - acopera Render free tier cold start (30-60s)
 const RETRY_TIMEOUT_MS = 90000; // 90s pe retry
@@ -13,11 +28,14 @@ let warmupPromise = null;
 const WARMUP_TIMEOUT_MS = 90000;
 
 export function warmupBackend() {
-  if (warmupDone || !API_URL) return Promise.resolve();
+  if (warmupDone) return Promise.resolve();
   if (warmupPromise) return warmupPromise;
+  // Pe Vercel: /healthz e rewrite catre backend. Local: API_URL/.
+  const url = isVercelProd ? '/healthz' : (API_URL ? `${API_URL}/` : null);
+  if (!url) return Promise.resolve();
   const controller = new AbortController();
   const t = setTimeout(() => controller.abort(), WARMUP_TIMEOUT_MS);
-  warmupPromise = fetch(`${API_URL}/`, { method: 'GET', signal: controller.signal, cache: 'no-store' })
+  warmupPromise = fetch(url, { method: 'GET', signal: controller.signal, cache: 'no-store' })
     .then((r) => { if (r && r.ok) warmupDone = true; })
     .catch(() => {})
     .finally(() => { clearTimeout(t); warmupPromise = null; });
@@ -25,9 +43,7 @@ export function warmupBackend() {
 }
 
 // Trigger warmup imediat la incarcarea modulului
-if (API_URL) {
-  warmupBackend();
-}
+warmupBackend();
 
 async function getHeaders() {
   const { data } = await supabase.auth.getSession();
@@ -64,9 +80,9 @@ async function attemptFetch(path, options, headers, timeoutMs) {
 }
 
 async function request(path, options = {}) {
-  if (!API_URL) {
-    throw new ApiError('VITE_API_URL nu este setat. Verifica configuratia Vercel.', 0);
-  }
+  // API_URL gol in productie (rewrite Vercel) e valid - nu mai aruncam eroare aici.
+  // In dev local fara VITE_API_URL setat, request-urile vor pleca catre origin-ul curent
+  // si vor da 404 vizibil → user va sti sa configureze.
   const headers = await getHeaders();
   const userTimeout = options.timeout;
 
