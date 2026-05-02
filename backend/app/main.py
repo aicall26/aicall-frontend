@@ -43,6 +43,7 @@ def root():
         "twilio": config.has_twilio(),
         "openai": bool(config.OPENAI_API_KEY),
         "elevenlabs": bool(config.ELEVENLABS_API_KEY),
+        "code_marker": "topup-split-v2",
     }
 
 
