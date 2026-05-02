@@ -72,6 +72,7 @@ function decodeJwt(token) {
 async function ensureCorrectSupabaseToken() {
   // Daca user-ul are token in localStorage de la alt Supabase project (vechi),
   // il deconectam ca sa se reloghezeze pe proiectul nou.
+  // IMPORTANT: nu chemam localStorage.clear() - ar sterge tema, preferinte si alte sesiuni.
   const { data: { session } } = await supabase.auth.getSession();
   if (!session?.access_token) return false;
 
@@ -79,14 +80,13 @@ async function ensureCorrectSupabaseToken() {
   if (!url) return true;
 
   try {
-    const expectedHost = new URL(url).host; // ex: tetzhzolintcrdspneet.supabase.co
+    const expectedHost = new URL(url).host;
     const payload = decodeJwt(session.access_token);
     if (payload && payload.iss) {
       const tokenHost = new URL(payload.iss).host;
       if (tokenHost !== expectedHost) {
         console.warn('[AiCall] Token de pe alt Supabase project. Token host:', tokenHost, 'expected:', expectedHost);
         try { await supabase.auth.signOut(); } catch {}
-        try { localStorage.clear(); } catch {}
         return false;
       }
     }
