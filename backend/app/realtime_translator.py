@@ -73,15 +73,16 @@ async def _synthesize_to_twilio(
     voice_id: str,
     twilio_ws: WebSocket,
     stream_sid: str,
+    interrupt: asyncio.Event,
 ) -> None:
     """
-    Cere ElevenLabs sa sintetizeze text-ul, primeste audio ulaw_8000 streaming
-    si forwardeaza la Twilio in chunks de 20ms.
+    Cere ElevenLabs sinteza, primeste audio ulaw_8000 streaming si forwardeaza
+    la Twilio in chunks de 20ms. Daca interrupt event e setat (user vorbeste din
+    nou), opreste IMEDIAT - trimite event 'clear' la Twilio sa goleasca buffer-ul.
     """
     if not text or not text.strip():
         return
     if not config.ELEVENLABS_API_KEY:
-        log.error("ELEVENLABS_API_KEY missing - cannot synthesize")
         return
 
     url = ELEVENLABS_TTS_URL.format(voice_id=voice_id)
@@ -92,11 +93,11 @@ async def _synthesize_to_twilio(
     }
     params = {
         "output_format": "ulaw_8000",
-        "optimize_streaming_latency": "3",  # cea mai mica latenta posibila
+        "optimize_streaming_latency": "3",
     }
     payload = {
         "text": text.strip(),
-        "model_id": "eleven_flash_v2_5",  # ~75ms TTFB
+        "model_id": "eleven_flash_v2_5",
         "voice_settings": {
             "stability": 0.5,
             "similarity_boost": 0.8,
@@ -109,6 +110,16 @@ async def _synthesize_to_twilio(
     sent_first = False
     started = asyncio.get_event_loop().time()
 
+    async def send_clear():
+        """Spune-i Twilio sa goleasca buffer-ul de output (corteaza audio in fly)."""
+        try:
+            await twilio_ws.send_text(json.dumps({
+                "event": "clear",
+                "streamSid": stream_sid,
+            }))
+        except Exception:
+            pass
+
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
             async with client.stream(
@@ -116,15 +127,21 @@ async def _synthesize_to_twilio(
             ) as r:
                 if r.status_code >= 400:
                     body = await r.aread()
-                    log.error(f"ElevenLabs TTS {r.status_code}: {body[:200]}")
+                    log.error(f"ElevenLabs {r.status_code}: {body[:200]}")
                     return
 
                 async for chunk in r.aiter_bytes():
+                    if interrupt.is_set():
+                        log.info("Synthesis interrupted by user speech")
+                        await send_clear()
+                        return
                     if not chunk:
                         continue
                     buffer.extend(chunk)
-                    # Trimit cate 160 bytes (20ms) cu pacing 20ms
                     while len(buffer) >= TWILIO_CHUNK_BYTES:
+                        if interrupt.is_set():
+                            await send_clear()
+                            return
                         piece = bytes(buffer[:TWILIO_CHUNK_BYTES])
                         del buffer[:TWILIO_CHUNK_BYTES]
                         try:
@@ -133,8 +150,7 @@ async def _synthesize_to_twilio(
                                 "streamSid": stream_sid,
                                 "media": {"payload": base64.b64encode(piece).decode("ascii")},
                             }))
-                        except Exception as e:
-                            log.warning(f"Twilio send failed: {e}")
+                        except Exception:
                             return
                         if not sent_first:
                             sent_first = True
@@ -142,8 +158,7 @@ async def _synthesize_to_twilio(
                             log.info(f"ElevenLabs TTFB: {ttfb:.0f}ms")
                         await asyncio.sleep(TWILIO_CHUNK_INTERVAL)
 
-                # Flush buffer-ul ramas
-                if buffer:
+                if buffer and not interrupt.is_set():
                     try:
                         await twilio_ws.send_text(json.dumps({
                             "event": "media",
@@ -152,6 +167,9 @@ async def _synthesize_to_twilio(
                         }))
                     except Exception:
                         pass
+    except asyncio.CancelledError:
+        await send_clear()
+        raise
     except Exception as e:
         log.exception(f"_synthesize_to_twilio failed: {e}")
 
@@ -177,6 +195,8 @@ async def bridge_twilio_openai(twilio_ws: WebSocket, stream_sid: Optional[str] =
         "to_number": None,
         "voice_id": None,
         "synthesis_lock": asyncio.Lock(),
+        "current_synth_task": None,  # Task-ul de sinteza activ (poate fi anulat)
+        "interrupt": asyncio.Event(),  # Setat cand user reincepe sa vorbeasca
     }
 
     try:
@@ -203,8 +223,8 @@ async def bridge_twilio_openai(twilio_ws: WebSocket, stream_sid: Optional[str] =
                     "turn_detection": {
                         "type": "server_vad",
                         "threshold": 0.5,
-                        "prefix_padding_ms": 300,
-                        "silence_duration_ms": 500,
+                        "prefix_padding_ms": 200,
+                        "silence_duration_ms": 250,  # ~250ms = mai responsiv
                         "create_response": True,
                     },
                     "temperature": 0.6,
@@ -272,13 +292,22 @@ async def bridge_twilio_openai(twilio_ws: WebSocket, stream_sid: Optional[str] =
                             pending_text = []
                             log.info(f"OpenAI response done: '{full_text[:200]}'")
                             if full_text and state.get("voice_id") and state.get("stream_sid"):
-                                async with state["synthesis_lock"]:
-                                    await _synthesize_to_twilio(
-                                        full_text,
-                                        state["voice_id"],
-                                        twilio_ws,
-                                        state["stream_sid"],
-                                    )
+                                # Reset interrupt event si pornim sinteza ca task ce poate fi anulat
+                                state["interrupt"].clear()
+                                async def _do_synth():
+                                    async with state["synthesis_lock"]:
+                                        await _synthesize_to_twilio(
+                                            full_text,
+                                            state["voice_id"],
+                                            twilio_ws,
+                                            state["stream_sid"],
+                                            state["interrupt"],
+                                        )
+                                # Anuleaza synth in fly daca exista (rar - lock previne)
+                                prev = state.get("current_synth_task")
+                                if prev and not prev.done():
+                                    prev.cancel()
+                                state["current_synth_task"] = asyncio.create_task(_do_synth())
                             else:
                                 log.warning(
                                     f"Skip synthesis: text={bool(full_text)} "
@@ -288,7 +317,10 @@ async def bridge_twilio_openai(twilio_ws: WebSocket, stream_sid: Optional[str] =
                         elif msg_type == "conversation.item.input_audio_transcription.completed":
                             log.info(f"Caller said: '{msg.get('transcript', '')[:200]}'")
                         elif msg_type == "input_audio_buffer.speech_started":
-                            log.debug("Caller started speaking")
+                            # User vorbeste DIN NOU - intrerupem sinteza in fly
+                            log.info("Caller started speaking - interrupting current synthesis")
+                            state["interrupt"].set()
+                            pending_text = []  # nu mai sintetizam ce era partial
                         elif msg_type == "input_audio_buffer.speech_stopped":
                             log.debug("Caller stopped speaking")
                         elif msg_type == "session.created":
