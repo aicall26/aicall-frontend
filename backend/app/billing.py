@@ -169,27 +169,36 @@ def topup_credit(user_id: str, amount_cents: int, external_ref: Optional[str] = 
         raise ValueError("Amount must be positive")
 
     sb = supabase_admin()
+
+    # Aflam daca exista profil
+    profile_exists = False
     current_balance = 0
     try:
         user_res = sb.table("users").select("credit_cents").eq("id", user_id).limit(1).execute()
         if user_res and user_res.data and len(user_res.data) > 0:
+            profile_exists = True
             current_balance = user_res.data[0].get("credit_cents", 0) or 0
-    except Exception as e:
-        # Daca query-ul cade, mergem mai departe cu balance=0 si vom face upsert
+    except Exception:
         pass
 
     new_balance = current_balance + amount_cents
+    now_iso = datetime.now(timezone.utc).isoformat()
 
-    # Upsert profil ca sa creem rand-ul daca lipseste (trigger on_auth_user_created
-    # poate sa fi esuat in trecut). Folosim upsert pe (id) - daca exista, doar update.
+    # Update / Insert separate ca sa evitam bug-uri cu upsert in supabase-py.
     try:
-        sb.table("users").upsert({
-            "id": user_id,
-            "credit_cents": new_balance,
-            "updated_at": datetime.now(timezone.utc).isoformat(),
-        }, on_conflict="id").execute()
+        if profile_exists:
+            sb.table("users").update({
+                "credit_cents": new_balance,
+                "updated_at": now_iso,
+            }).eq("id", user_id).execute()
+        else:
+            sb.table("users").insert({
+                "id": user_id,
+                "credit_cents": new_balance,
+                "updated_at": now_iso,
+            }).execute()
     except Exception as e:
-        raise ValueError(f"DB upsert error: {e}")
+        raise ValueError(f"DB write error: {e}")
 
     sb.table("credit_transactions").insert({
         "user_id": user_id,
