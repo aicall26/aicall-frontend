@@ -7,6 +7,8 @@ from typing import Optional
 from datetime import datetime, timezone
 import logging
 
+from fastapi import WebSocket
+
 from .config import config
 from .auth import get_current_user_id
 from .db import supabase_admin
@@ -14,6 +16,7 @@ from .billing import get_user_credit, can_start_call, deduct_seconds, topup_cred
 from .twilio_voice import generate_access_token, twiml_outbound, twiml_inbound_to_user
 from . import phone_numbers as pn
 from . import voice_clone
+from .realtime_translator import bridge_twilio_openai
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("aicall")
@@ -163,30 +166,51 @@ async def twilio_voice_outbound(request: Request):
 async def twilio_voice_inbound(request: Request):
     """
     Apelat de Twilio cand cineva suna pe numarul AiCall.
-    Trebuie sa identificam ce user trebuie sunat (1 user per numar la inceput).
+    Returneaza TwiML cu <Connect><Stream> ca sa pornim traducere live prin
+    OpenAI Realtime. Audio-ul caller-ului trece prin backend, e tradus si
+    returnat catre Twilio.
     """
     form = await request.form()
-    to_number = form.get("To", "")  # numarul AiCall
-    from_number = form.get("From", "")  # cine suna
+    to_number = form.get("To", "")
+    from_number = form.get("From", "")
     call_sid = form.get("CallSid", "")
-
     log.info(f"Inbound call: from={from_number} to={to_number} sid={call_sid}")
 
-    # Lookup ce user a cumparat numarul ‘to_number’
-    sb = supabase_admin()
-    res = sb.table("users").select("id").eq("twilio_phone_number", to_number).limit(1).execute()
-    if res.data:
-        target_user_id = res.data[0]["id"]
-        twiml = twiml_inbound_to_user(target_user_id)
-    else:
-        # Fallback: rejecteaza
-        from twilio.twiml.voice_response import VoiceResponse
-        response = VoiceResponse()
-        response.say("This number is not configured. Goodbye.", voice="alice")
-        response.hangup()
-        twiml = str(response)
+    # Construim URL-ul WebSocket pentru Twilio Media Streams.
+    # Twilio cere wss:// (TLS) si Render furnizeaza HTTPS automat.
+    public_url = config.BACKEND_PUBLIC_URL or str(request.base_url).rstrip("/")
+    ws_url = public_url.replace("https://", "wss://").replace("http://", "ws://")
+    stream_url = f"{ws_url}/ws/twilio-stream"
 
-    return Response(content=twiml, media_type="application/xml")
+    from twilio.twiml.voice_response import VoiceResponse, Connect, Stream
+    response = VoiceResponse()
+    connect = Connect()
+    stream = Stream(url=stream_url)
+    # Parametri pe care backend-ul ii primeste in mesajul start
+    stream.parameter(name="to_number", value=to_number)
+    stream.parameter(name="from_number", value=from_number)
+    stream.parameter(name="call_sid", value=call_sid)
+    connect.append(stream)
+    response.append(connect)
+    return Response(content=str(response), media_type="application/xml")
+
+
+@app.websocket("/ws/twilio-stream")
+async def twilio_stream_ws(websocket: WebSocket):
+    """
+    WebSocket primit de la Twilio Media Streams. Audio caller intra aici,
+    traducere AI iese inapoi catre caller. Implementare in realtime_translator.
+    """
+    await websocket.accept()
+    log.info("Twilio stream WebSocket accepted")
+    try:
+        await bridge_twilio_openai(websocket)
+    except Exception as e:
+        log.exception(f"twilio_stream_ws crashed: {e}")
+        try:
+            await websocket.close(code=1011)
+        except Exception:
+            pass
 
 
 # ============================================================
