@@ -69,8 +69,14 @@ def topup_manual(req: TopupRequest, user_id: str = Depends(get_current_user_id))
     """Endpoint temporar pt test - in productie va fi prin Stripe webhook."""
     if req.amount_cents <= 0 or req.amount_cents > 50000:
         raise HTTPException(400, "Amount invalid (max $500)")
-    new_balance = topup_credit(user_id, req.amount_cents, external_ref="manual-test")
-    return {"credit_cents": new_balance}
+    try:
+        new_balance = topup_credit(user_id, req.amount_cents, external_ref="manual-test")
+        return {"credit_cents": new_balance}
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    except Exception as e:
+        log.exception(f"topup-manual failed for {user_id[:8]}")
+        raise HTTPException(500, f"Topup failed: {e}")
 
 
 # ============================================================
