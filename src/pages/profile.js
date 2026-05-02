@@ -1,66 +1,10 @@
 import { supabase } from '../lib/supabase.js';
-import { api } from '../lib/api.js';
-import { fetchCredit } from '../lib/credit.js';
-import { openVerifyCallerModal } from '../lib/verifyCaller.js';
 
 let user = null;
 let profile = null;
 let editing = false;
 let changingPassword = false;
 let passwordMsg = null;
-
-// Phone number self-service state
-let aicallNumber = null;
-let personalVerified = null; // {verified: bool, phone_number: string} | null
-let phoneSection = {
-  searching: false,
-  searchResults: null,
-  searchError: null,
-  searchCountry: 'GB',
-  searchType: 'local',
-  buying: false,
-  buyError: null,
-  showBuyDialog: false,
-};
-
-const COUNTRY_OPTIONS = [
-  // Cele mai importante / cele mai folosite
-  { code: 'GB', label: '🇬🇧 Marea Britanie (UK)', group: 'Europa de Vest' },
-  { code: 'IE', label: '🇮🇪 Irlanda', group: 'Europa de Vest' },
-  { code: 'DE', label: '🇩🇪 Germania', group: 'Europa de Vest' },
-  { code: 'FR', label: '🇫🇷 Franța', group: 'Europa de Vest' },
-  { code: 'ES', label: '🇪🇸 Spania', group: 'Europa de Vest' },
-  { code: 'IT', label: '🇮🇹 Italia', group: 'Europa de Vest' },
-  { code: 'NL', label: '🇳🇱 Olanda', group: 'Europa de Vest' },
-  { code: 'BE', label: '🇧🇪 Belgia', group: 'Europa de Vest' },
-  { code: 'AT', label: '🇦🇹 Austria', group: 'Europa de Vest' },
-  { code: 'CH', label: '🇨🇭 Elveția', group: 'Europa de Vest' },
-  { code: 'PT', label: '🇵🇹 Portugalia', group: 'Europa de Vest' },
-  // Nordics
-  { code: 'SE', label: '🇸🇪 Suedia', group: 'Țările Nordice' },
-  { code: 'NO', label: '🇳🇴 Norvegia', group: 'Țările Nordice' },
-  { code: 'DK', label: '🇩🇰 Danemarca', group: 'Țările Nordice' },
-  { code: 'FI', label: '🇫🇮 Finlanda', group: 'Țările Nordice' },
-  // Estul Europei
-  { code: 'RO', label: '🇷🇴 România', group: 'Europa de Est' },
-  { code: 'PL', label: '🇵🇱 Polonia', group: 'Europa de Est' },
-  { code: 'HU', label: '🇭🇺 Ungaria', group: 'Europa de Est' },
-  { code: 'CZ', label: '🇨🇿 Cehia', group: 'Europa de Est' },
-  { code: 'SK', label: '🇸🇰 Slovacia', group: 'Europa de Est' },
-  { code: 'BG', label: '🇧🇬 Bulgaria', group: 'Europa de Est' },
-  { code: 'GR', label: '🇬🇷 Grecia', group: 'Europa de Est' },
-  // America
-  { code: 'US', label: '🇺🇸 Statele Unite', group: 'America de Nord' },
-  { code: 'CA', label: '🇨🇦 Canada', group: 'America de Nord' },
-  // Altele
-  { code: 'AU', label: '🇦🇺 Australia', group: 'Altele' },
-];
-
-const TYPE_OPTIONS = [
-  { code: 'local', label: 'Local (fix)' },
-  { code: 'mobile', label: 'Mobil' },
-  { code: 'tollfree', label: 'Toll-free' },
-];
 
 export function renderProfile() {
   if (!profile) {
@@ -112,9 +56,6 @@ export function renderProfile() {
       </div>
     </div>
 
-    ${renderVerifiedCallerCard()}
-    ${renderPhoneNumberCard()}
-
     <div class="profile-card">
       <h3 class="card-title">Schimbă parola</h3>
       ${changingPassword ? `
@@ -159,133 +100,6 @@ export function renderProfile() {
   </div>`;
 }
 
-function renderVerifiedCallerCard() {
-  if (personalVerified?.verified) {
-    return `
-    <div class="profile-card">
-      <h3 class="card-title">📱 Numărul tău personal (verificat)</h3>
-      <div class="aicall-number-display">
-        <div class="aicall-number-big">${personalVerified.phone_number}</div>
-        <div class="aicall-number-meta" style="color:var(--success)">✓ Verificat ca AiCall caller ID</div>
-      </div>
-      <p class="phone-help">
-        Când suni prin AiCall, clienții văd acest număr (cunoscut). Pentru a primi apeluri prin AiCall ai nevoie suplimentar de un număr AiCall (vezi mai jos).
-      </p>
-      <button class="btn-small btn-danger-outline" id="removeVerifiedBtn">Șterge verificarea</button>
-    </div>`;
-  }
-
-  return `
-  <div class="profile-card">
-    <h3 class="card-title">📱 Folosește numărul tău personal (gratis)</h3>
-    <p class="phone-help">
-      Verifică numărul tău existent ca să apară ca tine când suni prin AiCall - <strong>fără să cumperi nimic</strong>.
-      Twilio te apelează cu un cod, răspunzi și-l tastezi pe telefonul tău.
-    </p>
-    <ul class="verify-benefits">
-      <li>✓ Funcționează pentru <strong>apeluri ieșite</strong> (când suni tu)</li>
-      <li>✗ NU primești apeluri prin AiCall pe acest număr (vezi opțiunile mai jos)</li>
-      <li>✓ Gratuit, durează 1 minut</li>
-    </ul>
-    <button class="btn-small btn-accent" id="verifyPersonalBtn">📞 Verifică numărul meu</button>
-  </div>`;
-}
-
-function renderPhoneNumberCard() {
-  if (aicallNumber) {
-    return `
-    <div class="profile-card">
-      <h3 class="card-title">Numărul tău AiCall</h3>
-      <div class="aicall-number-display">
-        <div class="aicall-number-big">${aicallNumber.twilio_phone_number}</div>
-        <div class="aicall-number-meta">
-          ${aicallNumber.twilio_phone_country} · ${aicallNumber.twilio_phone_type} ·
-          $${(aicallNumber.twilio_phone_monthly_cents / 100).toFixed(2)}/lună
-        </div>
-        ${aicallNumber.twilio_phone_next_charge_at ? `
-        <div class="aicall-number-meta">
-          Următoarea reînnoire: ${new Date(aicallNumber.twilio_phone_next_charge_at).toLocaleDateString('ro-RO')}
-        </div>` : ''}
-      </div>
-      <p class="phone-help">
-        Acesta este numărul tău AiCall. Englezii (sau alți interlocutori) sună aici și ajunge la tine cu traducere.
-        Când suni de pe AiCall, acest număr apare la celălalt.
-      </p>
-      <button class="btn-small btn-danger-outline" id="releaseNumberBtn">
-        Renunță la număr
-      </button>
-    </div>`;
-  }
-
-  return `
-  <div class="profile-card">
-    <h3 class="card-title">Numărul tău AiCall</h3>
-    <p class="phone-help">
-      Ai nevoie de un număr de telefon ca să primești apeluri în AiCall.
-      Costul lunar se scade automat din credit.
-    </p>
-
-    ${phoneSection.searchError ? `<div class="profile-msg error">${phoneSection.searchError}</div>` : ''}
-    ${phoneSection.buyError ? `<div class="profile-msg error">${phoneSection.buyError}</div>` : ''}
-
-    <div class="phone-search-row">
-      <div class="phone-search-field">
-        <label>Țară</label>
-        <select id="searchCountry" class="form-input">
-          ${(() => {
-            // Group countries by region
-            const groups = {};
-            COUNTRY_OPTIONS.forEach(c => {
-              if (!groups[c.group]) groups[c.group] = [];
-              groups[c.group].push(c);
-            });
-            return Object.entries(groups).map(([group, items]) =>
-              `<optgroup label="${group}">
-                ${items.map(c => `<option value="${c.code}" ${c.code === phoneSection.searchCountry ? 'selected' : ''}>${c.label}</option>`).join('')}
-              </optgroup>`
-            ).join('');
-          })()}
-        </select>
-      </div>
-      <div class="phone-search-field">
-        <label>Tip</label>
-        <select id="searchType" class="form-input">
-          ${TYPE_OPTIONS.map(t => `<option value="${t.code}" ${t.code === phoneSection.searchType ? 'selected' : ''}>${t.label}</option>`).join('')}
-        </select>
-      </div>
-    </div>
-
-    <button class="btn-small btn-accent" id="searchNumbersBtn" ${phoneSection.searching ? 'disabled' : ''}>
-      ${phoneSection.searching ? 'Caut numere...' : 'Caută numere disponibile'}
-    </button>
-
-    ${phoneSection.searchResults && phoneSection.searchResults.length > 0 ? `
-      <div class="phone-results-list">
-        ${phoneSection.searchResults.map((n, i) => `
-          <div class="phone-result-row">
-            <div class="phone-result-info">
-              <div class="phone-result-number">${n.phone_number}</div>
-              <div class="phone-result-meta">
-                ${n.locality ? n.locality + ' · ' : ''}${n.country} ${n.type} ·
-                <strong>$${n.monthly_usd}/lună</strong>
-              </div>
-            </div>
-            <button class="btn-small btn-accent buy-number-btn"
-              data-index="${i}"
-              ${phoneSection.buying ? 'disabled' : ''}>
-              ${phoneSection.buying ? '...' : 'Cumpără'}
-            </button>
-          </div>
-        `).join('')}
-      </div>
-    ` : ''}
-
-    ${phoneSection.searchResults && phoneSection.searchResults.length === 0 ? `
-      <div class="profile-msg">Nu s-au găsit numere pentru aceste criterii.</div>
-    ` : ''}
-  </div>`;
-}
-
 export async function mountProfile() {
   if (!profile) {
     const { data: { user: u } } = await supabase.auth.getUser();
@@ -294,46 +108,10 @@ export async function mountProfile() {
       const { data } = await supabase.from('users').select('*').eq('id', user.id).maybeSingle();
       profile = data || { email: user.email, full_name: user.user_metadata?.full_name || '' };
     }
-    // Fetch numarul Twilio + verificat personal (best-effort)
-    try {
-      const r = await api.get('/api/twilio/numbers/mine');
-      aicallNumber = r.number;
-    } catch {
-      aicallNumber = null;
-    }
-    try {
-      const v = await api.get('/api/twilio/personal/check');
-      personalVerified = v;
-    } catch {
-      personalVerified = null;
-    }
     rerender();
     return;
   }
 
-  // Verify personal caller ID
-  document.getElementById('verifyPersonalBtn')?.addEventListener('click', () => {
-    openVerifyCallerModal(async () => {
-      try {
-        const v = await api.get('/api/twilio/personal/check');
-        personalVerified = v;
-      } catch {}
-      rerender();
-    });
-  });
-
-  document.getElementById('removeVerifiedBtn')?.addEventListener('click', async () => {
-    if (!confirm('Sigur ștergi verificarea numărului personal?\n\nVa trebui să-l reverifici dacă vrei să-l folosești din nou.')) return;
-    try {
-      await api.delete('/api/twilio/personal');
-      personalVerified = null;
-      rerender();
-    } catch (e) {
-      alert('Stergere esuata: ' + (e.message || ''));
-    }
-  });
-
-  // Profile edit
   document.getElementById('editProfile')?.addEventListener('click', () => {
     editing = true;
     rerender();
@@ -362,92 +140,6 @@ export async function mountProfile() {
     rerender();
   });
 
-  // Phone number self-service
-  document.getElementById('searchCountry')?.addEventListener('change', (e) => {
-    phoneSection.searchCountry = e.target.value;
-  });
-  document.getElementById('searchType')?.addEventListener('change', (e) => {
-    phoneSection.searchType = e.target.value;
-  });
-
-  document.getElementById('searchNumbersBtn')?.addEventListener('click', async () => {
-    phoneSection.searching = true;
-    phoneSection.searchError = null;
-    phoneSection.buyError = null;
-    phoneSection.searchResults = null;
-    rerender();
-    try {
-      console.log(`[AiCall] Cautare numere: country=${phoneSection.searchCountry}, type=${phoneSection.searchType}`);
-      const res = await api.get(`/api/twilio/numbers/search?country=${phoneSection.searchCountry}&type=${phoneSection.searchType}&limit=10`);
-      console.log('[AiCall] Rezultate primite:', res);
-      phoneSection.searchResults = res.numbers || [];
-      if (phoneSection.searchResults.length === 0) {
-        phoneSection.searchError = 'Twilio nu are numere disponibile pentru aceasta combinatie. Incearca alta tara sau alt tip.';
-      }
-    } catch (e) {
-      console.error('[AiCall] Cautare esuata:', e);
-      phoneSection.searchError = 'Cautarea a esuat: ' + (e.message || 'eroare necunoscuta');
-      if (e.status === 503) phoneSection.searchError += '\n(Twilio nu e configurat pe backend - contacteaza administratorul)';
-    } finally {
-      phoneSection.searching = false;
-      rerender();
-    }
-  });
-
-  document.querySelectorAll('.buy-number-btn').forEach(btn => {
-    btn.addEventListener('click', async () => {
-      const idx = parseInt(btn.dataset.index, 10);
-      const number = phoneSection.searchResults?.[idx];
-      if (!number) return;
-
-      const ok = confirm(
-        `Cumperi numărul ${number.phone_number}?\n\n` +
-        `Cost lunar: $${number.monthly_usd}\n` +
-        `Se va scădea acum din credit.`
-      );
-      if (!ok) return;
-
-      phoneSection.buying = true;
-      phoneSection.buyError = null;
-      rerender();
-      try {
-        const result = await api.post('/api/twilio/numbers/buy', {
-          phone_number: number.phone_number,
-          country: number.country,
-          type: number.type,
-        });
-        // Refresh numar + credit
-        const mine = await api.get('/api/twilio/numbers/mine');
-        aicallNumber = mine.number;
-        phoneSection.searchResults = null;
-        await fetchCredit();
-        alert(`Numărul ${result.phone_number} a fost cumpărat cu succes!`);
-      } catch (e) {
-        phoneSection.buyError = e.message || 'Cumpărarea a eșuat.';
-      } finally {
-        phoneSection.buying = false;
-        rerender();
-      }
-    });
-  });
-
-  document.getElementById('releaseNumberBtn')?.addEventListener('click', async () => {
-    const ok = confirm(
-      'Sigur renunți la numărul AiCall?\n\n' +
-      'Twilio NU returnează banii pentru luna curentă.\n' +
-      'Nu vei mai putea primi apeluri pe acest număr.'
-    );
-    if (!ok) return;
-    try {
-      await api.delete('/api/twilio/numbers');
-      aicallNumber = null;
-      rerender();
-    } catch (e) {
-      alert('Eliberarea a eșuat: ' + (e.message || 'eroare'));
-    }
-  });
-
-  // Change password
   document.getElementById('changePasswordBtn')?.addEventListener('click', () => {
     changingPassword = true;
     passwordMsg = null;
@@ -507,7 +199,6 @@ export async function mountProfile() {
     editing = false;
     changingPassword = false;
     passwordMsg = null;
-    aicallNumber = null;
     await supabase.auth.signOut();
   });
 }

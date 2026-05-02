@@ -4,14 +4,16 @@ import { renderContacts, mountContacts } from '../pages/contacts.js';
 import { renderHistory, mountHistory } from '../pages/history.js';
 import { renderVoice, mountVoice } from '../pages/voice.js';
 import { renderProfile, mountProfile } from '../pages/profile.js';
+import { renderMyNumber, mountMyNumber } from '../pages/myNumber.js';
 import { fetchCredit, getCachedCredit, formatCredit, formatMinutes, onCreditChange } from './credit.js';
 
 const pages = {
-  call:     { render: renderCall,     mount: mountCall,     label: 'Sună',      icon: 'phone',    title: 'Sună' },
-  contacts: { render: renderContacts, mount: mountContacts, label: 'Agendă',    icon: 'contacts', title: 'Agendă' },
-  history:  { render: renderHistory,  mount: mountHistory,  label: 'Istoric',   icon: 'clock',    title: 'Istoric apeluri' },
-  voice:    { render: renderVoice,    mount: mountVoice,    label: 'Vocea Mea', icon: 'mic',      title: 'Vocea ta' },
-  profile:  { render: renderProfile,  mount: mountProfile,  label: 'Profil',    icon: 'user',     title: 'Profil' },
+  call:     { render: renderCall,     mount: mountCall,     label: 'Sună',       icon: 'phone',     title: 'Sună' },
+  contacts: { render: renderContacts, mount: mountContacts, label: 'Agendă',     icon: 'contacts',  title: 'Agendă' },
+  mynumber: { render: renderMyNumber, mount: mountMyNumber, label: 'Numărul meu', icon: 'incoming', title: 'Numărul meu' },
+  history:  { render: renderHistory,  mount: mountHistory,  label: 'Istoric',    icon: 'clock',     title: 'Istoric apeluri' },
+  voice:    { render: renderVoice,    mount: mountVoice,    label: 'Vocea Mea',  icon: 'mic',       title: 'Vocea ta' },
+  profile:  { render: renderProfile,  mount: mountProfile,  label: 'Profil',     icon: 'user',      title: 'Profil' },
 };
 
 const icons = {
@@ -20,6 +22,7 @@ const icons = {
   clock: `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>`,
   mic: `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>`,
   user: `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>`,
+  incoming: `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 2 16 8 22 8"/><line x1="22" y1="2" x2="16" y2="8"/><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6A19.79 19.79 0 012.12 4.18 2 2 0 014.11 2h3a2 2 0 012 1.72c.127.96.362 1.903.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.338 1.85.573 2.81.7A2 2 0 0122 16.92z"/></svg>`,
   logout: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>`,
   help: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`,
 };
@@ -283,7 +286,7 @@ function showHowItWorksModal() {
           <div class="howto-num">1</div>
           <div class="howto-body">
             <h4>Cumpără un număr AiCall</h4>
-            <p>Mergi la <strong>Profil → Numărul tău AiCall</strong>, alegi țara și cumperi un număr. Costul lunar (~$1.15 pentru UK) se deduce din credit.</p>
+            <p>Mergi la <strong>Numărul meu</strong> din meniu, alegi țara și cumperi un număr. Costul lunar (~$1.15 pentru UK) se deduce din credit.</p>
           </div>
         </div>
         <div class="howto-step">

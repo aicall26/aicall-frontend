@@ -176,7 +176,12 @@ input { font-family: inherit; color: var(--text-primary); }
 }
 .tab.active { color: var(--accent); background: rgba(108,99,255,0.1); }
 .tab-icon { display: flex; }
+.tab-icon svg { width: 20px; height: 20px; }
 .tab-label { white-space: nowrap; }
+@media (max-width: 380px) {
+  .tab { font-size: 9px; }
+  .tab-icon svg { width: 18px; height: 18px; }
+}
 
 /* ── Login Page ── */
 .login-page {
@@ -1366,4 +1371,295 @@ input { font-family: inherit; color: var(--text-primary); }
 @keyframes pulseDanger {
   0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); }
   50% { box-shadow: 0 0 0 8px rgba(239, 68, 68, 0); }
+}
+
+/* ─────────────────────────────────────────────────
+   Pagina "Numărul meu"
+   ───────────────────────────────────────────────── */
+.mynum-page {
+  padding: 16px 4px 32px;
+  display: flex; flex-direction: column; gap: 16px;
+}
+
+/* Hero (când nu există număr) */
+.mynum-hero {
+  display: flex; flex-direction: column; align-items: center; text-align: center;
+  padding: 28px 22px 22px;
+  background: linear-gradient(180deg, rgba(108,99,255,0.10), rgba(59,130,246,0.04));
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.mynum-hero-icon {
+  width: 72px; height: 72px;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--gradient);
+  color: white;
+  border-radius: var(--radius-full);
+  margin-bottom: 14px;
+  box-shadow: 0 8px 24px rgba(108,99,255,0.35);
+}
+.mynum-hero h2 { font-size: 20px; font-weight: 700; margin-bottom: 8px; }
+.mynum-hero p { font-size: 14px; color: var(--text-secondary); line-height: 1.55; max-width: 360px; }
+
+.mynum-steps-preview {
+  display: flex; flex-direction: column; gap: 10px;
+  padding: 4px;
+}
+.mynum-step-mini {
+  display: flex; align-items: center; gap: 12px;
+  padding: 12px 14px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 13.5px; color: var(--text-primary);
+}
+.mynum-step-mini > div:last-child { flex: 1; line-height: 1.4; }
+.mynum-step-num {
+  flex-shrink: 0;
+  width: 28px; height: 28px; border-radius: var(--radius-full);
+  background: var(--accent); color: white;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 13px; font-weight: 700;
+}
+.mynum-cta { margin-top: 8px; }
+
+/* Back btn în pagina shop */
+.mynum-back-btn {
+  align-self: flex-start;
+  padding: 6px 12px 6px 4px;
+  font-size: 14px;
+  color: var(--text-secondary);
+  border-radius: var(--radius-sm);
+  font-weight: 500;
+}
+.mynum-back-btn:hover { color: var(--text-primary); background: var(--bg-input); }
+
+.mynum-section-title {
+  font-size: 16px; font-weight: 700;
+  color: var(--text-primary);
+  margin: 0 4px;
+}
+.mynum-help {
+  font-size: 13.5px; color: var(--text-secondary);
+  line-height: 1.55; margin: 0 4px;
+}
+
+/* Search card */
+.mynum-search-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+  display: flex; flex-direction: column; gap: 12px;
+}
+
+/* Results list */
+.mynum-results { display: flex; flex-direction: column; gap: 10px; }
+.mynum-result-card {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  transition: border-color 0.15s;
+}
+.mynum-result-card:hover { border-color: var(--accent); }
+.mynum-result-info { flex: 1; min-width: 0; }
+.mynum-result-number {
+  font-family: 'JetBrains Mono', 'Courier New', monospace;
+  font-weight: 700; font-size: 15px;
+  color: var(--text-primary);
+  letter-spacing: 0.3px;
+}
+.mynum-result-meta {
+  font-size: 12px; color: var(--text-muted);
+  margin-top: 3px;
+}
+.mynum-result-price-col {
+  display: flex; flex-direction: column; align-items: flex-end; gap: 6px;
+  flex-shrink: 0;
+}
+.mynum-result-price {
+  font-size: 16px; font-weight: 700;
+  color: var(--accent);
+}
+.mynum-result-price small {
+  font-size: 11px; color: var(--text-muted); font-weight: 500;
+}
+
+/* Card cu numarul propriu (overview) */
+.mynum-card-hero {
+  background: linear-gradient(135deg, rgba(108,99,255,0.18), rgba(59,130,246,0.08));
+  border: 1px solid rgba(108,99,255,0.35);
+  border-radius: var(--radius);
+  padding: 22px 20px;
+  text-align: center;
+}
+.mynum-tag {
+  font-size: 10px; font-weight: 700;
+  letter-spacing: 1.5px;
+  color: var(--accent);
+  text-transform: uppercase;
+  margin-bottom: 10px;
+}
+.mynum-big-number {
+  font-family: 'JetBrains Mono', 'Courier New', monospace;
+  font-size: 26px; font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: 0.5px;
+  margin-bottom: 6px;
+  word-break: break-all;
+}
+.mynum-meta {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+.mynum-meta-small {
+  font-size: 11.5px;
+  color: var(--text-muted);
+  margin-top: 4px;
+}
+
+/* Mode tabs (always vs unanswered) */
+.mynum-mode-tabs {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 8px;
+}
+.mynum-mode-tab {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+  text-align: left;
+  transition: all 0.15s;
+}
+.mynum-mode-tab:hover { border-color: var(--accent); }
+.mynum-mode-tab.active {
+  background: rgba(108,99,255,0.10);
+  border-color: var(--accent);
+}
+.mynum-mode-title {
+  font-size: 13px; font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 4px;
+}
+.mynum-mode-desc {
+  font-size: 11.5px; color: var(--text-muted);
+  line-height: 1.4;
+}
+
+/* Step list */
+.mynum-howto {
+  display: flex; flex-direction: column; gap: 14px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+}
+.mynum-step {
+  display: flex; gap: 12px; align-items: flex-start;
+}
+.mynum-step-circle {
+  flex-shrink: 0;
+  width: 28px; height: 28px;
+  border-radius: var(--radius-full);
+  background: var(--gradient);
+  color: white;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 13px; font-weight: 700;
+  margin-top: 2px;
+}
+.mynum-step-body { flex: 1; min-width: 0; }
+.mynum-step-body h4 {
+  font-size: 14px; font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 8px;
+  line-height: 1.4;
+}
+.mynum-step-body p {
+  font-size: 13px; color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+/* Code row (USSD code + copy/dial) */
+.mynum-code-row {
+  display: flex; align-items: stretch; gap: 6px;
+  margin: 8px 0 6px;
+}
+.mynum-code {
+  flex: 1;
+  font-family: 'JetBrains Mono', 'Courier New', monospace;
+  font-size: 17px; font-weight: 700;
+  color: var(--accent);
+  background: var(--bg-input);
+  border: 1.5px dashed var(--accent);
+  border-radius: var(--radius-sm);
+  padding: 10px 14px;
+  display: flex; align-items: center;
+  letter-spacing: 0.5px;
+  word-break: break-all;
+}
+.btn-icon {
+  width: 40px;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  transition: all 0.15s;
+  text-decoration: none;
+  flex-shrink: 0;
+}
+.btn-icon:hover { color: var(--accent); border-color: var(--accent); }
+.btn-icon.mynum-call-link { color: var(--success); }
+.btn-icon.mynum-call-link:hover { background: rgba(34,197,94,0.12); border-color: var(--success); }
+.btn-icon.copied { background: rgba(34,197,94,0.15); color: var(--success); border-color: var(--success); }
+
+.mynum-tiny-help {
+  display: block;
+  font-size: 11.5px;
+  color: var(--text-muted);
+  line-height: 1.4;
+  margin-top: 4px;
+}
+.mynum-warning-mini {
+  margin-top: 8px;
+  padding: 8px 10px;
+  background: rgba(245, 158, 11, 0.10);
+  border: 1px solid rgba(245, 158, 11, 0.30);
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  color: var(--warning);
+  line-height: 1.4;
+}
+
+/* Disable forwarding card */
+.mynum-disable-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+}
+.mynum-disable-card h4 {
+  font-size: 13.5px; font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 4px;
+}
+
+.mynum-release-btn { width: 100%; margin-top: 4px; }
+
+/* Error state */
+.mynum-error-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 28px 20px;
+  text-align: center;
+}
+.mynum-error-icon { font-size: 36px; margin-bottom: 8px; }
+.mynum-error-card h3 { font-size: 16px; font-weight: 700; margin-bottom: 6px; }
+.mynum-error-card p { font-size: 13px; color: var(--text-secondary); margin-bottom: 14px; line-height: 1.5; }
+
+@media (min-width: 640px) {
+  .mynum-page { padding: 20px 16px 40px; }
 }
