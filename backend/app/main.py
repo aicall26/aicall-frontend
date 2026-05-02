@@ -477,20 +477,22 @@ def numbers_attach_existing(req: AttachNumberRequest, user_id: str = Depends(get
     si nu vrea sa cumpere altul. NU se scade credit (numarul a fost cumparat
     in afara aplicatiei).
     """
-    if not config.has_twilio():
-        raise HTTPException(503, "Twilio not configured")
     if not req.phone_sid.startswith("PN"):
         raise HTTPException(400, "phone_sid trebuie sa inceapa cu PN... (gasesti in Twilio Console)")
-    try:
-        from twilio.rest import Client
-        client = Client(config.TWILIO_ACCOUNT_SID, config.TWILIO_AUTH_TOKEN)
-        twn = client.incoming_phone_numbers(req.phone_sid).fetch()
-        if twn.phone_number != req.phone_number:
-            raise HTTPException(400, f"SID nu corespunde cu numarul: Twilio raporteaza {twn.phone_number}")
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(502, f"Twilio fetch failed: {e}")
+    if not req.phone_number.startswith("+"):
+        raise HTTPException(400, "phone_number trebuie sa inceapa cu + (format international)")
+
+    # Verificare Twilio e optionala - daca esueaza (cont diferit / SID neexistent)
+    # tot atasam in DB (user e responsabil sa puna date corecte). Logam doar.
+    if config.has_twilio():
+        try:
+            from twilio.rest import Client
+            client = Client(config.TWILIO_ACCOUNT_SID, config.TWILIO_AUTH_TOKEN)
+            twn = client.incoming_phone_numbers(req.phone_sid).fetch()
+            if twn.phone_number != req.phone_number:
+                log.warning(f"Twilio SID {req.phone_sid} -> {twn.phone_number}, user said {req.phone_number}")
+        except Exception as e:
+            log.warning(f"Twilio fetch failed (non-fatal): {e}")
 
     # Update profil prin REST direct (evitam bug-ul supabase-py 2.x)
     import httpx
