@@ -462,6 +462,67 @@ def numbers_buy(req: BuyNumberRequest, user_id: str = Depends(get_current_user_i
         raise HTTPException(500, str(e))
 
 
+class AttachNumberRequest(BaseModel):
+    phone_number: str
+    phone_sid: str
+    country: str = "US"
+    type: str = "local"
+
+
+@app.post("/api/twilio/numbers/attach-existing")
+def numbers_attach_existing(req: AttachNumberRequest, user_id: str = Depends(get_current_user_id)):
+    """
+    Ataseaza un numar Twilio cumparat anterior (pe contul user-ului din Twilio
+    Console) la profilul AiCall. Util cand user-ul are deja un numar Twilio
+    si nu vrea sa cumpere altul. NU se scade credit (numarul a fost cumparat
+    in afara aplicatiei).
+    """
+    if not config.has_twilio():
+        raise HTTPException(503, "Twilio not configured")
+    if not req.phone_sid.startswith("PN"):
+        raise HTTPException(400, "phone_sid trebuie sa inceapa cu PN... (gasesti in Twilio Console)")
+    try:
+        from twilio.rest import Client
+        client = Client(config.TWILIO_ACCOUNT_SID, config.TWILIO_AUTH_TOKEN)
+        twn = client.incoming_phone_numbers(req.phone_sid).fetch()
+        if twn.phone_number != req.phone_number:
+            raise HTTPException(400, f"SID nu corespunde cu numarul: Twilio raporteaza {twn.phone_number}")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(502, f"Twilio fetch failed: {e}")
+
+    # Update profil prin REST direct (evitam bug-ul supabase-py 2.x)
+    import httpx
+    rest_url = f"{config.SUPABASE_URL}/rest/v1/users"
+    headers = {
+        "apikey": config.SUPABASE_SERVICE_ROLE_KEY,
+        "Authorization": f"Bearer {config.SUPABASE_SERVICE_ROLE_KEY}",
+        "Content-Type": "application/json",
+        "Prefer": "return=minimal",
+    }
+    payload = {
+        "twilio_phone_number": req.phone_number,
+        "twilio_phone_sid": req.phone_sid,
+        "twilio_phone_country": req.country.upper(),
+        "twilio_phone_type": req.type,
+        "twilio_phone_monthly_cents": 0,  # extern - nu taxam
+        "twilio_phone_purchased_at": datetime.now(timezone.utc).isoformat(),
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }
+    try:
+        with httpx.Client(timeout=15.0) as hc:
+            r = hc.patch(rest_url, params={"id": f"eq.{user_id}"}, json=payload, headers=headers)
+            if r.status_code >= 300:
+                raise HTTPException(500, f"DB update failed: {r.status_code} {r.text[:200]}")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(500, f"DB error: {e}")
+
+    return {"ok": True, "phone_number": req.phone_number}
+
+
 @app.delete("/api/twilio/numbers")
 def numbers_release(user_id: str = Depends(get_current_user_id)):
     if not config.has_twilio():

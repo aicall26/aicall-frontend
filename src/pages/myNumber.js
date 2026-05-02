@@ -121,6 +121,26 @@ function renderEmpty() {
       <button class="btn-primary mynum-cta" id="mynumStartShop">
         Cumpără un număr
       </button>
+
+      <details class="mynum-attach-existing">
+        <summary>Ai deja un număr Twilio? Atașează-l aici</summary>
+        <div class="mynum-attach-form">
+          <p class="mynum-help">Dacă ai cumpărat deja un număr direct din Twilio Console, îl poți atașa aici fără cost suplimentar.</p>
+          <div class="phone-search-field">
+            <label>Phone Number (cu +)</label>
+            <input type="tel" id="attachPhoneNumber" class="form-input" placeholder="+1 260 308 2661" />
+          </div>
+          <div class="phone-search-field">
+            <label>SID (din Twilio Console, începe cu PN)</label>
+            <input type="text" id="attachPhoneSid" class="form-input" placeholder="PN..." />
+          </div>
+          <div class="phone-search-field">
+            <label>Țară (cod 2 litere)</label>
+            <input type="text" id="attachCountry" class="form-input" placeholder="US" maxlength="2" value="US" />
+          </div>
+          <button class="btn-small btn-accent" id="attachExistingBtn">Atașează numărul</button>
+        </div>
+      </details>
     </div>`;
 }
 
@@ -298,6 +318,38 @@ export async function mountMyNumber() {
     shop.searchError = null;
     shop.buyError = null;
     rerender();
+  });
+
+  document.getElementById('attachExistingBtn')?.addEventListener('click', async () => {
+    const phone = document.getElementById('attachPhoneNumber')?.value.trim();
+    const sid = document.getElementById('attachPhoneSid')?.value.trim();
+    const country = (document.getElementById('attachCountry')?.value.trim() || 'US').toUpperCase();
+    if (!phone || !phone.startsWith('+')) {
+      alert('Numărul trebuie să înceapă cu + (format internațional)');
+      return;
+    }
+    if (!sid || !sid.startsWith('PN')) {
+      alert('SID-ul trebuie să înceapă cu PN');
+      return;
+    }
+    const btn = document.getElementById('attachExistingBtn');
+    btn.disabled = true;
+    btn.textContent = 'Atașez...';
+    try {
+      await api.post('/api/twilio/numbers/attach-existing', {
+        phone_number: phone,
+        phone_sid: sid,
+        country,
+        type: 'local',
+      });
+      const mine = await api.get('/api/twilio/numbers/mine');
+      myNumber = mine.number;
+      rerender();
+    } catch (e) {
+      alert('Atașare eșuată: ' + (e.message || 'eroare'));
+      btn.disabled = false;
+      btn.textContent = 'Atașează numărul';
+    }
   });
 
   document.getElementById('mynumBack')?.addEventListener('click', () => {
