@@ -319,8 +319,11 @@ export function mountCall() {
     }
 
     document.querySelectorAll('.dialpad-key').forEach(key => {
-      key.addEventListener('click', () => {
-        callState.number += key.dataset.key;
+      let holdTimer = null;
+      let holdFired = false;
+
+      const appendChar = (char) => {
+        callState.number += char;
         const typeInput = document.getElementById('phoneTypeable');
         if (typeInput) typeInput.value = callState.number;
         updateDialpadUI();
@@ -330,7 +333,43 @@ export function mountCall() {
           content.innerHTML = renderDialpad();
           mountCall();
         }
+      };
+
+      key.addEventListener('click', (e) => {
+        if (holdFired) {
+          holdFired = false;
+          return;
+        }
+        appendChar(key.dataset.key);
       });
+
+      // Long-press pe 0 -> insereaza "+" (la fel ca pe dialer-ul telefonului)
+      const startHold = (e) => {
+        if (key.dataset.key !== '0') return;
+        e.preventDefault();
+        holdFired = false;
+        holdTimer = setTimeout(() => {
+          holdFired = true;
+          appendChar('+');
+          if (navigator.vibrate) try { navigator.vibrate(40); } catch {}
+        }, 500);
+      };
+      const cancelHold = () => {
+        if (holdTimer) {
+          clearTimeout(holdTimer);
+          holdTimer = null;
+        }
+      };
+      key.addEventListener('touchstart', startHold, { passive: false });
+      key.addEventListener('touchend', cancelHold);
+      key.addEventListener('touchcancel', cancelHold);
+      key.addEventListener('mousedown', startHold);
+      key.addEventListener('mouseup', cancelHold);
+      key.addEventListener('mouseleave', cancelHold);
+      // Blocheaza meniul context (copy/paste) pe long-press la 0
+      if (key.dataset.key === '0') {
+        key.addEventListener('contextmenu', (e) => e.preventDefault());
+      }
     });
 
     document.getElementById('deleteBtn')?.addEventListener('click', () => {

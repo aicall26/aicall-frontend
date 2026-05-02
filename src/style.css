@@ -346,6 +346,10 @@ input { font-family: inherit; color: var(--text-primary); }
   background: var(--bg-card); border: 1px solid var(--border);
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   transition: background 0.15s, transform 0.1s;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
 }
 .dialpad-key:active { background: var(--accent); transform: scale(0.95); }
 .key-num { font-size: 24px; font-weight: 600; line-height: 1; }
