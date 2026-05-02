@@ -184,19 +184,42 @@ def topup_credit(user_id: str, amount_cents: int, external_ref: Optional[str] = 
     new_balance = current_balance + amount_cents
     now_iso = datetime.now(timezone.utc).isoformat()
 
-    # Update / Insert separate ca sa evitam bug-uri cu upsert in supabase-py.
+    # Update / Insert direct prin PostgREST cu Prefer: return=minimal ca sa NU
+    # cerem rand-ul de retur (cauza '404 JSON could not be generated' cand RLS
+    # blocheaza SELECT-ul implicit dupa INSERT/UPDATE prin supabase-py).
+    import httpx
+    rest_url = f"{config.SUPABASE_URL}/rest/v1/users"
+    headers = {
+        "apikey": config.SUPABASE_SERVICE_ROLE_KEY,
+        "Authorization": f"Bearer {config.SUPABASE_SERVICE_ROLE_KEY}",
+        "Content-Type": "application/json",
+        "Prefer": "return=minimal,resolution=merge-duplicates",
+    }
+
     try:
-        if profile_exists:
-            sb.table("users").update({
-                "credit_cents": new_balance,
-                "updated_at": now_iso,
-            }).eq("id", user_id).execute()
-        else:
-            sb.table("users").insert({
-                "id": user_id,
-                "credit_cents": new_balance,
-                "updated_at": now_iso,
-            }).execute()
+        with httpx.Client(timeout=15.0) as client:
+            if profile_exists:
+                r = client.patch(
+                    rest_url,
+                    params={"id": f"eq.{user_id}"},
+                    json={"credit_cents": new_balance, "updated_at": now_iso},
+                    headers=headers,
+                )
+            else:
+                # POST cu Prefer: resolution=merge-duplicates → upsert pe PK.
+                r = client.post(
+                    rest_url,
+                    json={
+                        "id": user_id,
+                        "credit_cents": new_balance,
+                        "updated_at": now_iso,
+                    },
+                    headers=headers,
+                )
+        if r.status_code >= 300:
+            raise ValueError(f"PostgREST {r.status_code}: {r.text[:200]}")
+    except ValueError:
+        raise
     except Exception as e:
         raise ValueError(f"DB write error: {e}")
 
