@@ -436,8 +436,14 @@ def numbers_release(user_id: str = Depends(get_current_user_id)):
 
 @app.get("/api/twilio/numbers/mine")
 def numbers_mine(user_id: str = Depends(get_current_user_id)):
-    info = pn.get_user_number(user_id)
-    return {"number": info}
+    try:
+        info = pn.get_user_number(user_id)
+        return {"number": info}
+    except Exception as e:
+        log.exception(f"numbers_mine failed for user {user_id[:8]}")
+        # Pentru un user care nu are inca profil (trigger n-a rulat) sau alte erori
+        # tranzitorii, returneaza None in loc de 500 ca frontend-ul sa nu blocheze.
+        return {"number": None, "_warning": str(e)[:200]}
 
 
 # ============================================================
@@ -470,6 +476,9 @@ def personal_check(user_id: str = Depends(get_current_user_id)):
         return pn.check_verified_caller(user_id)
     except RuntimeError as e:
         raise HTTPException(502, str(e))
+    except Exception as e:
+        log.exception(f"personal_check failed for {user_id[:8]}")
+        return {"verified": False, "_warning": str(e)[:200]}
 
 
 @app.delete("/api/twilio/personal")

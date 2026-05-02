@@ -379,11 +379,22 @@ def remove_verified_caller(user_id: str) -> dict:
 
 def get_user_number(user_id: str) -> Optional[dict]:
     sb = supabase_admin()
-    res = sb.table("users").select(
-        "twilio_phone_number, twilio_phone_sid, twilio_phone_country, "
-        "twilio_phone_type, twilio_phone_monthly_cents, twilio_phone_purchased_at, "
-        "twilio_phone_next_charge_at"
-    ).eq("id", user_id).maybe_single().execute()
-    if not res or not res.data or not res.data.get("twilio_phone_number"):
+    # Folosesc .limit(1) in loc de .maybe_single() - .maybe_single() arunca
+    # exception pe unele versiuni supabase-py cand row-ul lipseste sau cand
+    # serializarea raspunsului esueaza, ducand la 500 in endpoint.
+    try:
+        res = sb.table("users").select(
+            "twilio_phone_number, twilio_phone_sid, twilio_phone_country, "
+            "twilio_phone_type, twilio_phone_monthly_cents, twilio_phone_purchased_at, "
+            "twilio_phone_next_charge_at"
+        ).eq("id", user_id).limit(1).execute()
+    except Exception as e:
+        log.warning(f"get_user_number query failed for {user_id[:8]}: {e}")
         return None
-    return res.data
+
+    if not res or not res.data or len(res.data) == 0:
+        return None
+    row = res.data[0]
+    if not row.get("twilio_phone_number"):
+        return None
+    return row
