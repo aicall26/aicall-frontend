@@ -39,6 +39,7 @@ let scriptFinished = false;
 
 const MIN_SECONDS = 60;
 const TARGET_SECONDS = 120;
+const MAX_SECONDS = 180; // Hard cap - dincolo de asta upload-ul risca timeout pe Render free tier
 
 const SCRIPT = `Bună ziua! Mă numesc, și astăzi voi citi un text pentru a-mi clona vocea.
 Această tehnologie permite traducerea în timp real a conversațiilor telefonice,
@@ -450,6 +451,10 @@ async function startRecording() {
       } else if (remEl) {
         remEl.textContent = `Încă ${formatTime(remaining)} necesare`;
       }
+      // Auto-stop la MAX_SECONDS pentru a preveni fisiere prea mari care dau timeout la upload
+      if (state.time >= MAX_SECONDS && state.recording) {
+        stopRecording();
+      }
     }, 1000);
 
     rerender();
@@ -495,9 +500,21 @@ async function uploadVoiceToBackend() {
     return;
   }
 
+  // Avertisment daca fisierul e prea mare (cresc sansa de timeout pe Render free tier)
+  const blobSizeMB = state.audioBlob.size / (1024 * 1024);
+  if (blobSizeMB > 8) {
+    state.errorMsg = `Fișierul e prea mare (${blobSizeMB.toFixed(1)} MB). Înregistrează un sample mai scurt (60-90 secunde sunt suficiente).`;
+    rerender();
+    return;
+  }
+
   state.status = 'uploading';
   state.errorMsg = null;
   rerender();
+
+  // Timeout client-side mai scurt decat Render (~100s) ca sa primim raspuns clar inainte de cut-off.
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 95000);
 
   try {
     const formData = new FormData();
@@ -511,7 +528,10 @@ async function uploadVoiceToBackend() {
       method: 'POST',
       headers: { 'Authorization': `Bearer ${token}` },
       body: formData,
+      signal: controller.signal,
     });
+
+    clearTimeout(timeoutId);
 
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
@@ -524,8 +544,13 @@ async function uploadVoiceToBackend() {
     cleanupAudioState();
     rerender();
   } catch (e) {
+    clearTimeout(timeoutId);
     state.status = 'preview';
-    state.errorMsg = 'Clonarea a eșuat: ' + (e.message || 'eroare necunoscută');
+    if (e.name === 'AbortError') {
+      state.errorMsg = 'Clonarea a durat prea mult. Reîncearcă cu un sample mai scurt (60-90 sec).';
+    } else {
+      state.errorMsg = 'Clonarea a eșuat: ' + (e.message || 'eroare necunoscută');
+    }
     rerender();
   }
 }

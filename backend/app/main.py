@@ -283,8 +283,15 @@ async def voice_clone_endpoint(
     audio_bytes = await audio.read()
     if len(audio_bytes) < 50_000:  # ~3-5 secunde audio comprimat
         raise HTTPException(400, "Audio prea scurt - inregistreaza minim 30 secunde")
-    if len(audio_bytes) > 50_000_000:  # 50MB
-        raise HTTPException(413, "Audio prea mare - maxim 50MB")
+    # 10MB cap: peste asta ElevenLabs IVC poate sa dea timeout pe Render (limita server ~100s).
+    # ElevenLabs are nevoie doar de 30-90s audio pentru clone bun, deci marimi mai mari sunt inutile.
+    if len(audio_bytes) > 10_000_000:
+        size_mb = len(audio_bytes) / (1024 * 1024)
+        raise HTTPException(
+            413,
+            f"Audio prea mare ({size_mb:.1f} MB). Inregistreaza maxim 60-90 secunde "
+            "pentru clonare optima (limita 10MB)."
+        )
 
     try:
         result = await voice_clone.clone_voice(

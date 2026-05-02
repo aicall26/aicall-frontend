@@ -91,25 +91,70 @@ async def clone_voice(
     if not voice_name:
         voice_name = f"AiCall-{user_id[:8]}"
 
-    # Upload la ElevenLabs IVC
-    async with httpx.AsyncClient(timeout=120.0) as client:
-        files = {
-            "files": (f"voice-{user_id[:8]}.webm", audio_bytes, mime_type),
-        }
-        data = {
-            "name": voice_name,
-            "description": f"AiCall voice clone for {user_label}",
-        }
+    # Determine extension correctly from mime_type
+    ext = "webm"
+    if "mp4" in mime_type or "m4a" in mime_type:
+        ext = "m4a"
+    elif "mpeg" in mime_type or "mp3" in mime_type:
+        ext = "mp3"
+    elif "wav" in mime_type:
+        ext = "wav"
+    elif "ogg" in mime_type:
+        ext = "ogg"
+
+    log.info(
+        f"Voice clone start: user={user_id[:8]} bytes={len(audio_bytes)} "
+        f"mime={mime_type} ext={ext}"
+    )
+
+    # Timeout-uri separate ca write/read sa nu se interfereze.
+    # Render free tier are ~100s server timeout, deci ramanem sub.
+    timeout = httpx.Timeout(connect=10.0, read=85.0, write=60.0, pool=10.0)
+    transport = httpx.AsyncHTTPTransport(retries=2)
+
+    files = {
+        "files": (f"voice-{user_id[:8]}.{ext}", audio_bytes, mime_type),
+    }
+    data = {
+        "name": voice_name,
+        "description": f"AiCall voice clone for {user_label}",
+    }
+
+    last_exc = None
+    r = None
+    # 2 incercari (audio mare poate da timeout pe prima incercare cand container e cold)
+    for attempt in range(2):
         try:
-            r = await client.post(
-                f"{ELEVENLABS_BASE}/voices/add",
-                files=files,
-                data=data,
-                headers=_elevenlabs_headers(),
+            async with httpx.AsyncClient(timeout=timeout, transport=transport) as client:
+                r = await client.post(
+                    f"{ELEVENLABS_BASE}/voices/add",
+                    files=files,
+                    data=data,
+                    headers=_elevenlabs_headers(),
+                )
+            break
+        except (httpx.ReadTimeout, httpx.ConnectTimeout, httpx.WriteTimeout) as e:
+            last_exc = e
+            log.warning(
+                f"ElevenLabs IVC timeout (attempt {attempt + 1}/2): {type(e).__name__}: {e}"
+            )
+            if attempt == 0:
+                continue
+            raise RuntimeError(
+                "Upload-ul vocii a depasit timpul. Inregistreaza un sample mai scurt "
+                "(60-90 secunde sunt suficiente) sau reincearca peste un minut."
             )
         except httpx.RequestError as e:
-            log.exception("ElevenLabs request failed")
+            log.exception(f"ElevenLabs request failed (attempt {attempt + 1}/2)")
+            last_exc = e
+            if attempt == 0:
+                continue
             raise RuntimeError(f"Eroare retea ElevenLabs: {e}")
+
+    if r is None:
+        raise RuntimeError(
+            f"Upload esuat dupa 2 incercari: {last_exc}"
+        )
 
     if r.status_code >= 400:
         try:
