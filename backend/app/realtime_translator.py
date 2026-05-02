@@ -106,12 +106,11 @@ async def _synthesize_to_twilio(
         },
     }
 
-    buffer = bytearray()
     sent_first = False
     started = asyncio.get_event_loop().time()
 
     async def send_clear():
-        """Spune-i Twilio sa goleasca buffer-ul de output (corteaza audio in fly)."""
+        """Twilio: clear buffer pentru output - cut audio in fly."""
         try:
             await twilio_ws.send_text(json.dumps({
                 "event": "clear",
@@ -120,7 +119,13 @@ async def _synthesize_to_twilio(
         except Exception:
             pass
 
+    # Twilio recomanda chunks de ~160-1600 bytes per media event.
+    # Trimitem cum vin de la ElevenLabs - Twilio face propriul buffering la 8kHz.
+    # NU adaugam pacing artificial (20ms sleep era bug ce facea 50x slowdown).
+    SEND_CHUNK = 1600  # ~200ms audio per network message
+
     try:
+        buffer = bytearray()
         async with httpx.AsyncClient(timeout=30.0) as client:
             async with client.stream(
                 "POST", url, params=params, headers=headers, json=payload
@@ -138,12 +143,12 @@ async def _synthesize_to_twilio(
                     if not chunk:
                         continue
                     buffer.extend(chunk)
-                    while len(buffer) >= TWILIO_CHUNK_BYTES:
+                    while len(buffer) >= SEND_CHUNK:
                         if interrupt.is_set():
                             await send_clear()
                             return
-                        piece = bytes(buffer[:TWILIO_CHUNK_BYTES])
-                        del buffer[:TWILIO_CHUNK_BYTES]
+                        piece = bytes(buffer[:SEND_CHUNK])
+                        del buffer[:SEND_CHUNK]
                         try:
                             await twilio_ws.send_text(json.dumps({
                                 "event": "media",
@@ -155,8 +160,7 @@ async def _synthesize_to_twilio(
                         if not sent_first:
                             sent_first = True
                             ttfb = (asyncio.get_event_loop().time() - started) * 1000
-                            log.info(f"ElevenLabs TTFB: {ttfb:.0f}ms")
-                        await asyncio.sleep(TWILIO_CHUNK_INTERVAL)
+                            log.info(f"ElevenLabs first audio sent: {ttfb:.0f}ms after request")
 
                 if buffer and not interrupt.is_set():
                     try:
