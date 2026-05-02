@@ -189,13 +189,16 @@ async def bridge_twilio_openai(twilio_ws: WebSocket, stream_sid: Optional[str] =
         ) as openai_ws:
             log.info(f"OpenAI Realtime connected; stream_sid={stream_sid}")
 
-            # Sesiune: doar TEXT output (vocea o face ElevenLabs)
+            # Sesiune: cer audio+text dar IGNOR audio out-ul OpenAI.
+            # Folosim modalitatea audio doar ca trigger reliably la VAD response.
             await openai_ws.send(json.dumps({
                 "type": "session.update",
                 "session": {
-                    "modalities": ["text"],
+                    "modalities": ["audio", "text"],
                     "instructions": INSTRUCTIONS,
+                    "voice": "alloy",  # ignorat - nu folosim audio out
                     "input_audio_format": "g711_ulaw",
+                    "output_audio_format": "g711_ulaw",
                     "input_audio_transcription": {"model": "whisper-1"},
                     "turn_detection": {
                         "type": "server_vad",
@@ -245,7 +248,7 @@ async def bridge_twilio_openai(twilio_ws: WebSocket, stream_sid: Optional[str] =
                     log.exception(f"from_twilio_to_openai: {e}")
 
             async def from_openai_to_twilio():
-                """OpenAI text traducere -> ElevenLabs -> Twilio."""
+                """OpenAI text traducere -> ElevenLabs -> Twilio. Audio OpenAI ignorat."""
                 pending_text = []
                 try:
                     async for raw in openai_ws:
@@ -256,11 +259,19 @@ async def bridge_twilio_openai(twilio_ws: WebSocket, stream_sid: Optional[str] =
                             delta = msg.get("delta", "")
                             if delta:
                                 pending_text.append(delta)
-                        elif msg_type == "response.text.done":
+                        elif msg_type == "response.audio_transcript.delta":
+                            # Daca text deltas nu vin (e.g. modalities=audio only),
+                            # luam din transcript-ul audio out-ului OpenAI.
+                            delta = msg.get("delta", "")
+                            if delta and not pending_text:
+                                pending_text.append(delta)
+                            elif delta:
+                                pending_text.append(delta)
+                        elif msg_type in ("response.text.done", "response.audio_transcript.done"):
                             full_text = "".join(pending_text).strip()
                             pending_text = []
+                            log.info(f"OpenAI response done: '{full_text[:200]}'")
                             if full_text and state.get("voice_id") and state.get("stream_sid"):
-                                # Lock ca sa nu se sinteze 2 raspunsuri suprapuse
                                 async with state["synthesis_lock"]:
                                     await _synthesize_to_twilio(
                                         full_text,
@@ -268,11 +279,25 @@ async def bridge_twilio_openai(twilio_ws: WebSocket, stream_sid: Optional[str] =
                                         twilio_ws,
                                         state["stream_sid"],
                                     )
-                                log.info(f"AI translation done: '{full_text[:120]}'")
+                            else:
+                                log.warning(
+                                    f"Skip synthesis: text={bool(full_text)} "
+                                    f"voice_id={state.get('voice_id')} "
+                                    f"stream_sid={state.get('stream_sid')}"
+                                )
                         elif msg_type == "conversation.item.input_audio_transcription.completed":
-                            log.info(f"Caller said: '{msg.get('transcript', '')[:120]}'")
+                            log.info(f"Caller said: '{msg.get('transcript', '')[:200]}'")
+                        elif msg_type == "input_audio_buffer.speech_started":
+                            log.debug("Caller started speaking")
+                        elif msg_type == "input_audio_buffer.speech_stopped":
+                            log.debug("Caller stopped speaking")
+                        elif msg_type == "session.created":
+                            log.info("OpenAI session created")
+                        elif msg_type == "session.updated":
+                            log.info("OpenAI session config applied")
                         elif msg_type == "error":
                             log.error(f"OpenAI error: {msg}")
+                        # Ignor response.audio.delta si alte event-uri
                 except websockets.ConnectionClosed:
                     log.info("OpenAI websocket closed")
                 except Exception as e:
