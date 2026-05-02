@@ -25,6 +25,10 @@ let state = {
   testAudio: null,
   message: null,
   errorMsg: null,
+  // Test traducere live
+  translatedText: null,
+  translateAudio: null,
+  translating: false,
 };
 let mediaRecorder = null;
 let chunks = [];
@@ -157,6 +161,44 @@ export function renderVoice() {
       </div>
 
       <div class="profile-card">
+        <h3 class="card-title">🌍 Test traducere live</h3>
+        <p class="phone-help">Scrie o propoziție în <strong>română</strong> și auzi-o instant în alta limbă <strong>cu vocea ta clonată</strong>. Asta e exact ce va auzi interlocutorul în apel real.</p>
+
+        <div class="profile-field">
+          <label>Text în română</label>
+          <textarea id="translateInput" class="form-input" rows="3" placeholder="Buna ziua, as dori sa verific soldul contului meu, va rog."></textarea>
+        </div>
+
+        <div class="profile-field">
+          <label>Tradu în</label>
+          <select id="translateTargetLang" class="form-input">
+            <option value="EN" selected>🇬🇧 Engleză</option>
+            <option value="DE">🇩🇪 Germană</option>
+            <option value="FR">🇫🇷 Franceză</option>
+            <option value="ES">🇪🇸 Spaniolă</option>
+            <option value="IT">🇮🇹 Italiană</option>
+            <option value="PT">🇵🇹 Portugheză</option>
+            <option value="NL">🇳🇱 Olandeză</option>
+            <option value="PL">🇵🇱 Poloneză</option>
+          </select>
+        </div>
+
+        <button class="btn-primary" id="translateBtn">
+          🔊 Traduce și ascultă
+        </button>
+
+        ${state.translatedText ? `
+          <div class="translated-text-preview">
+            <small>Traducere:</small>
+            <p>${state.translatedText}</p>
+          </div>
+        ` : ''}
+        ${state.translateAudio ? `
+          <audio controls autoplay src="${state.translateAudio}" class="audio-preview"></audio>
+        ` : ''}
+      </div>
+
+      <div class="profile-card">
         <h3 class="card-title">Re-clonare voce</h3>
         <p class="phone-help">Daca vocea ta a fost clonata gresit sau prost, poti reinregistra. Se va folosi noua versiune.</p>
         <button class="btn-small btn-ghost" id="reRecordBtn">Înregistrează din nou</button>
@@ -264,6 +306,56 @@ export async function mountVoice() {
     rerender();
     return;
   }
+
+  // Test traducere live
+  document.getElementById('translateBtn')?.addEventListener('click', async () => {
+    if (state.translating) return;
+    const input = document.getElementById('translateInput');
+    const langSelect = document.getElementById('translateTargetLang');
+    const text = (input?.value || '').trim();
+    const targetLang = langSelect?.value || 'EN';
+    if (!text) {
+      alert('Scrie un text in romana intai.');
+      return;
+    }
+    state.translating = true;
+    state.translatedText = null;
+    if (state.translateAudio) {
+      URL.revokeObjectURL(state.translateAudio);
+      state.translateAudio = null;
+    }
+    const btn = document.getElementById('translateBtn');
+    if (btn) { btn.disabled = true; btn.textContent = '⏳ Traduc...'; }
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
+      const res = await fetch(`${apiUrl('/api/translate/text-to-voice')}`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          text,
+          source_lang: 'RO',
+          target_lang: targetLang,
+          flash: true,
+        }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.detail || `HTTP ${res.status}`);
+      }
+      state.translatedText = res.headers.get('X-Translated-Text') || '';
+      const blob = await res.blob();
+      state.translateAudio = URL.createObjectURL(blob);
+    } catch (e) {
+      alert('Traducere esuata: ' + (e.message || 'eroare'));
+    } finally {
+      state.translating = false;
+      rerender();
+    }
+  });
 
   // Re-record / Re-do
   document.getElementById('reRecordBtn')?.addEventListener('click', () => {

@@ -385,6 +385,105 @@ class VoiceTestRequest(BaseModel):
     flash: bool = False
 
 
+class TranslateTextRequest(BaseModel):
+    text: str
+    source_lang: str = "RO"  # ce vorbesti tu
+    target_lang: str = "EN"  # ce vrei sa auzi
+    flash: bool = True
+
+
+@app.post("/api/translate/text-to-voice")
+async def translate_text_to_voice(
+    req: TranslateTextRequest,
+    user_id: str = Depends(get_current_user_id),
+):
+    """
+    Demo: ia text in source_lang, il traduce in target_lang, apoi il sintetizeaza
+    cu vocea clonata a user-ului. Util pentru a testa pipeline-ul de traducere
+    fara apel telefonic.
+    """
+    if not req.text or len(req.text.strip()) < 1:
+        raise HTTPException(400, "Text gol")
+    if len(req.text) > 800:
+        raise HTTPException(400, "Text prea lung (maxim 800 caractere)")
+    if not config.OPENAI_API_KEY:
+        raise HTTPException(503, "OpenAI not configured")
+    if not config.ELEVENLABS_API_KEY:
+        raise HTTPException(503, "ElevenLabs not configured")
+
+    import httpx
+
+    LANG_NAMES = {
+        "EN": "English", "RO": "Romanian", "DE": "German", "FR": "French",
+        "ES": "Spanish", "IT": "Italian", "PT": "Portuguese", "PL": "Polish",
+        "NL": "Dutch", "GR": "Greek", "HU": "Hungarian", "CZ": "Czech",
+        "BG": "Bulgarian", "RU": "Russian",
+    }
+    src_name = LANG_NAMES.get(req.source_lang.upper(), req.source_lang)
+    tgt_name = LANG_NAMES.get(req.target_lang.upper(), req.target_lang)
+
+    # 1. Traducere cu OpenAI gpt-4o-mini (rapid + ieftin)
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            r = await client.post(
+                "https://api.openai.com/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {config.OPENAI_API_KEY}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "model": "gpt-4o-mini",
+                    "temperature": 0.2,
+                    "messages": [
+                        {
+                            "role": "system",
+                            "content": (
+                                f"You are a translator. Translate the user's text from "
+                                f"{src_name} to {tgt_name}. Output ONLY the translation - "
+                                "no commentary, no quotes, no explanations. Preserve the "
+                                "tone (questions stay questions, exclamations stay exclamations)."
+                            ),
+                        },
+                        {"role": "user", "content": req.text.strip()},
+                    ],
+                },
+            )
+            if r.status_code >= 400:
+                raise HTTPException(502, f"Translate failed: {r.text[:200]}")
+            data = r.json()
+            translated = (data.get("choices") or [{}])[0].get("message", {}).get("content", "").strip()
+            if not translated:
+                raise HTTPException(502, "Empty translation")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(502, f"Translate error: {e}")
+
+    log.info(f"translate {req.source_lang}->{req.target_lang}: '{req.text[:50]}' -> '{translated[:50]}'")
+
+    # 2. Sinteza cu vocea clonata a user-ului in target_lang
+    try:
+        audio_bytes = await voice_clone.synthesize_test(
+            user_id=user_id,
+            text=translated,
+            language=req.target_lang.upper(),
+            use_flash=req.flash,
+        )
+    except ValueError as e:
+        raise HTTPException(404, str(e))
+    except RuntimeError as e:
+        raise HTTPException(502, str(e))
+
+    return Response(
+        content=audio_bytes,
+        media_type="audio/mpeg",
+        headers={
+            "Cache-Control": "no-store",
+            "X-Translated-Text": translated[:300].encode("ascii", "ignore").decode("ascii"),
+        },
+    )
+
+
 @app.post("/api/voice/test-tts")
 async def voice_test_tts(
     req: VoiceTestRequest,

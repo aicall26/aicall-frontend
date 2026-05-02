@@ -1714,6 +1714,26 @@ input { font-family: inherit; color: var(--text-primary); }
   border-top: 1px dashed var(--border);
 }
 
+.translated-text-preview {
+  margin: 12px 0;
+  padding: 12px 14px;
+  background: rgba(108, 99, 255, 0.08);
+  border: 1px solid rgba(108, 99, 255, 0.30);
+  border-radius: var(--radius-sm);
+}
+.translated-text-preview small {
+  display: block;
+  font-size: 11px; font-weight: 600;
+  color: var(--accent);
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  margin-bottom: 4px;
+}
+.translated-text-preview p {
+  font-size: 14px; color: var(--text-primary);
+  line-height: 1.4;
+}
+
 /* Disable forwarding card */
 .mynum-disable-card {
   background: var(--bg-card);
