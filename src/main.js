@@ -108,7 +108,19 @@ async function init() {
     showLogin();
   }
 
-  supabase.auth.onAuthStateChange((_event, session) => {
+  let lastSessionUserId = null;
+  const initialSess = (await supabase.auth.getSession()).data.session;
+  lastSessionUserId = initialSess?.user?.id || null;
+
+  supabase.auth.onAuthStateChange((event, session) => {
+    // Ignora refresh-urile silentioase ca sa nu re-randam app-ul (te-ar muta de pe pagina curenta)
+    if (event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED' || event === 'INITIAL_SESSION') {
+      return;
+    }
+    const newUserId = session?.user?.id || null;
+    if (newUserId === lastSessionUserId) return;
+    lastSessionUserId = newUserId;
+
     if (session) {
       renderApp();
     } else {
