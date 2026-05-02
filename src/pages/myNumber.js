@@ -1,4 +1,4 @@
-import { api } from '../lib/api.js';
+import { api, warmupBackend } from '../lib/api.js';
 import { fetchCredit } from '../lib/credit.js';
 
 const COUNTRY_OPTIONS = [
@@ -292,6 +292,8 @@ async function loadNumber() {
   loading = true;
   loadError = null;
   try {
+    // Asteapta warmup-ul ca preflight CORS sa nu pice cand backend e cold
+    try { await warmupBackend(); } catch {}
     const r = await api.get('/api/twilio/numbers/mine');
     myNumber = r.number;
   } catch (e) {

@@ -5,16 +5,22 @@ export const API_URL = import.meta.env.VITE_API_URL || '';
 const DEFAULT_TIMEOUT_MS = 60000; // 60s - acopera Render free tier cold start (30-60s)
 const RETRY_TIMEOUT_MS = 90000; // 90s pe retry
 
-// Warmup: ping backend in background ca sa-l trezeasca daca dormea
+// Warmup: ping backend in background ca sa-l trezeasca daca dormea.
+// Render free tier intra in stand-by dupa ~15min; primul request fail-uieste
+// daca container-ul nu e gata (preflight CORS pica → Failed to fetch).
 let warmupDone = false;
 let warmupPromise = null;
-function warmupBackend() {
+const WARMUP_TIMEOUT_MS = 90000;
+
+export function warmupBackend() {
   if (warmupDone || !API_URL) return Promise.resolve();
   if (warmupPromise) return warmupPromise;
-  warmupPromise = fetch(`${API_URL}/`, { method: 'GET' })
-    .then(() => { warmupDone = true; })
+  const controller = new AbortController();
+  const t = setTimeout(() => controller.abort(), WARMUP_TIMEOUT_MS);
+  warmupPromise = fetch(`${API_URL}/`, { method: 'GET', signal: controller.signal, cache: 'no-store' })
+    .then((r) => { if (r && r.ok) warmupDone = true; })
     .catch(() => {})
-    .finally(() => { warmupPromise = null; });
+    .finally(() => { clearTimeout(t); warmupPromise = null; });
   return warmupPromise;
 }
 
