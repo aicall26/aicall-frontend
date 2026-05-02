@@ -4,9 +4,22 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
+def _resolve_supabase_url() -> str:
+    """
+    Returneaza URL-ul Supabase. Daca env-ul e gresit setat (ex: la URL-ul
+    backend-ului), face fallback la URL-ul corect hardcodat. Asta evita downtime
+    cand env-ul Render e configurat gresit.
+    """
+    env_url = os.getenv("SUPABASE_URL", "")
+    if "supabase.co" in env_url or "supabase.in" in env_url:
+        return env_url
+    # Fallback hardcoded - proiectul AiCall.
+    return "https://tetzhzolintcrdspneet.supabase.co"
+
+
 class Config:
     # Supabase
-    SUPABASE_URL = os.getenv("SUPABASE_URL", "")
+    SUPABASE_URL = _resolve_supabase_url()
     SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY", "")
     SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
 
