@@ -37,13 +37,33 @@ app.add_middleware(
 # ============================================================
 @app.get("/")
 def root():
+    # Decodez payload-ul JWT-ului service_role ca sa vedem ce role e setat
+    # (cheia anon vs service_role - diagnoze rapide).
+    sr_role = "?"
+    sr_url_match = "?"
+    try:
+        import base64, json as jsonlib
+        key = config.SUPABASE_SERVICE_ROLE_KEY or ""
+        parts = key.split(".")
+        if len(parts) >= 2:
+            padded = parts[1] + "=" * ((4 - len(parts[1]) % 4) % 4)
+            payload = jsonlib.loads(base64.urlsafe_b64decode(padded))
+            sr_role = payload.get("role", "?")
+            iss = payload.get("iss", "")
+            sr_url_match = "match" if config.SUPABASE_URL and iss in config.SUPABASE_URL else f"mismatch (iss={iss[:40]})"
+    except Exception as e:
+        sr_role = f"decode-err: {e}"
+
     return {
         "name": "AiCall Backend",
         "supabase": config.has_supabase(),
         "twilio": config.has_twilio(),
         "openai": bool(config.OPENAI_API_KEY),
         "elevenlabs": bool(config.ELEVENLABS_API_KEY),
-        "code_marker": "topup-split-v2",
+        "code_marker": "topup-split-v3",
+        "sb_url": config.SUPABASE_URL,
+        "sr_key_role": sr_role,
+        "sr_iss_match_url": sr_url_match,
     }
 
 
